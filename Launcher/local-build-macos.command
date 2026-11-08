@@ -17,7 +17,9 @@ Usage: local-build-macos.command --output-dir DIR [options]
 
   --workspace DIR                 Repository root (default: this script's parent directory)
   --profile {base|retro-rewind|both}  Product to build (default: base)
-  --output-dir DIR                Output .app directory (required; Retro Rewind for both)
+  --output-dir DIR                Output .app directory (required unless --translate-only; Retro Rewind for both)
+  --translate-only                Stop once the translator has written generated/build_shards (no
+                                  native build, no .app); Launcher/tvos/build-tvos.command uses this
   --base-output-dir DIR           Base .app directory (required with --profile both)
   --game IMAGE --nodtool PATH     Extract and verify a clean supported disc image first
   --retro-rewind-package-dir DIR  RetroRewind6 directory (required for Retro Rewind)
@@ -36,7 +38,7 @@ EOF
 workspace="$default_workspace"; profile=base; output_dir=""; base_output_dir=""
 game=""; nodtool=""; retro_root=""; retro_wfc=""; skip_retro_wfc=0; force_clean=0
 parallel=0; cmake_bin=cmake; ninja_bin=ninja; dotnet_bin=dotnet; translator_bin=""
-setup_version=""
+setup_version=""; translate_only=0
 while (($#)); do
     case "$1" in
         --workspace) workspace=${2:-}; shift 2 ;;
@@ -55,6 +57,7 @@ while (($#)); do
         --dotnet) dotnet_bin=${2:-}; shift 2 ;;
         --translator-bin) translator_bin=${2:-}; shift 2 ;;
         --setup-version) setup_version=${2:-}; shift 2 ;;
+        --translate-only) translate_only=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) fail "unknown option: $1" ;;
     esac
@@ -70,7 +73,7 @@ if [[ -z "$setup_version" && -f "$workspace/Launcher/Directory.Build.props" ]]; 
     setup_version=$(sed -nE 's/.*<Version>([^<]+)<\/Version>.*/\1/p' "$workspace/Launcher/Directory.Build.props" | head -n 1)
 fi
 [[ "$setup_version" =~ ^[0-9A-Za-z.+-]*$ ]] || fail '--setup-version contains unsupported characters'
-[[ -n "$output_dir" ]] || fail '--output-dir is required'
+[[ -n "$output_dir" ]] || (( translate_only )) || fail '--output-dir is required'
 case "$profile" in base|retro-rewind|both) ;; *) fail '--profile must be base, retro-rewind, or both' ;; esac
 builds_retro=0; [[ "$profile" != base ]] && builds_retro=1
 if [[ "$profile" == both && -z "$base_output_dir" ]]; then fail '--base-output-dir is required with --profile both'; fi
@@ -177,6 +180,10 @@ step generate-data-init 'Generating local game data initialization'; translator 
 args=(emit-build-shards --project "$project" --base-metadata "$metadata" --base-functions-dir "$functions" --native-source-dir "$workspace/runtime/src" --out "$shards")
 if (( builds_retro )); then args+=(--resolved-profile "$mod_out/resolved_dispatch_profile.json" --retro-cpp-dir "$mod_out/cpp"); fi
 step emit-build-shards 'Preparing native build shards'; translator "${args[@]}"
+if (( translate_only )); then
+    printf 'MKWCBUILD:SHARDS=%s\n' "$shards"
+    exit 0
+fi
 
 toolchain_provenance="$native_build/toolchain-provenance.json"
 toolchain_fingerprint=$(printf '%s\n' "$(mkw_toolchain_identity "$workspace" "$cc_bin" "$cxx_bin" "$cmake_bin" "$ninja_bin")" "$cc_bin" "$cxx_bin" | mkw_sha256)

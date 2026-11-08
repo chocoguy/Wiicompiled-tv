@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Base Info.plist of the tvOS app. package_app.py fills in the bundle identifier, versions, SDK
+     keys and the icon keys from actool, and writes the result into the CMake-built WiiCompiled.app. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>WiiCompiled</string>
+	<key>CFBundleName</key>
+	<string>WiiCompiled</string>
+	<key>CFBundleDisplayName</key>
+	<string>WiiCompiled</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>AppleTVOS</string>
+	</array>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>3</integer>
+	</array>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<!-- The tvOS 27 SDK stops an app that has no scene lifecycle. SDL 3.4's UIKit backend
+	     provides it; this names its scene delegate (SDL_uikitappdelegate.m). -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>SDLSceneConfiguration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>SDLUIKitSceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<!-- Game controllers, and the Siri Remote as a micro gamepad. -->
+	<key>GCSupportsControllerUserInteraction</key>
+	<true/>
+	<key>GCSupportedGameControllers</key>
+	<array>
+		<dict>
+			<key>ProfileName</key>
+			<string>ExtendedGamepad</string>
+		</dict>
+		<dict>
+			<key>ProfileName</key>
+			<string>MicroGamepad</string>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+</dict>
+</plist>

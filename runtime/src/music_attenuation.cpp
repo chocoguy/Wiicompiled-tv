@@ -12,12 +12,22 @@
 #include <mutex>
 #include <thread>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+// macOS finds other apps' audio through the CoreAudio HAL process list
+// (external_audio_macos.cpp). tvOS has no such API, so it takes the "media
+// controls unavailable" path below.
+#if !TARGET_OS_TV
+#define MKW_MACOS_EXTERNAL_AUDIO 1
+#endif
+#endif
+
 #if defined(_WIN32)
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
-#elif defined(__APPLE__)
+#elif defined(MKW_MACOS_EXTERNAL_AUDIO)
 #include "external_audio_macos.h"
 #elif defined(__linux__)
 #include <dlfcn.h>
@@ -465,7 +475,7 @@ void MonitorLinuxMprisSessions() noexcept {
 }
 #endif
 
-#if defined(__APPLE__)
+#if defined(MKW_MACOS_EXTERNAL_AUDIO)
 void MonitorMacOSAudio() noexcept {
     using namespace std::chrono_literals;
     for (;;) {
@@ -486,7 +496,7 @@ void StartMonitor() noexcept {
 #elif defined(__linux__)
     // Detached so there is no shutdown ordering to manage against static audio state.
     std::thread(MonitorLinuxMprisSessions).detach();
-#elif defined(__APPLE__)
+#elif defined(MKW_MACOS_EXTERNAL_AUDIO)
     std::thread(MonitorMacOSAudio).detach();
 #else
     g_mediaControlAvailable.store(false, std::memory_order_release);

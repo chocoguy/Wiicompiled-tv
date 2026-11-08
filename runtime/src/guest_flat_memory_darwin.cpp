@@ -1,11 +1,16 @@
+// Flat guest memory for macOS and tvOS. One fixed 4 GiB reservation at kFixedFlatGuestBase, with
+// MEM1, MEM2 and owned backing stores aliased into it at the Wii's physical, cached and uncached
+// views. It uses vm_allocate/vm_remap from <mach/vm_map.h>, which are the mach_vm_* calls under
+// another name in a 64-bit task: <mach/mach_vm.h> is "#error unsupported" in the tvOS SDK.
 #include "guest_flat_memory.h"
 
 #include <mach/mach.h>
-#include <mach/mach_vm.h>
+#include <mach/vm_map.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -82,9 +87,17 @@ void Initialize(const std::vector<RegionRequest>& regions) {
         }
     }
 
-    mach_vm_address_t address = kFixedFlatGuestBase;
-    if (mach_vm_allocate(mach_task_self(), &address, kGuestSpaceSize, VM_FLAGS_FIXED) != KERN_SUCCESS || address != kFixedFlatGuestBase) {
-        throw std::runtime_error("unable to reserve fixed 4 GiB macOS guest address space");
+    vm_address_t address = kFixedFlatGuestBase;
+    const kern_return_t reserved = vm_allocate(mach_task_self(), &address, kGuestSpaceSize, VM_FLAGS_FIXED);
+    if (reserved != KERN_SUCCESS || address != kFixedFlatGuestBase) {
+        if (reserved == KERN_SUCCESS) {
+            vm_deallocate(mach_task_self(), address, kGuestSpaceSize);
+        }
+        char message[160];
+        std::snprintf(message, sizeof message, "unable to reserve the fixed 4 GiB guest address space at 0x%llx: %s",
+                      static_cast<unsigned long long>(kFixedFlatGuestBase),
+                      reserved == KERN_SUCCESS ? "placed elsewhere" : mach_error_string(reserved));
+        throw std::runtime_error(message);
     }
     g_base = reinterpret_cast<uint8_t*>(address);
 
@@ -108,7 +121,7 @@ void Initialize(const std::vector<RegionRequest>& regions) {
             void* host = mmap(nullptr, static_cast<size_t>(s.size), PROT_READ | PROT_WRITE,
                               MAP_PRIVATE | MAP_ANON, -1, 0);
             if (host == MAP_FAILED) {
-                throw std::runtime_error("unable to allocate anonymous macOS guest backing store");
+                throw std::runtime_error("unable to allocate an anonymous guest backing store");
             }
             s.host = static_cast<uint8_t*>(host);
         }
@@ -119,23 +132,23 @@ void Initialize(const std::vector<RegionRequest>& regions) {
             const auto& s = *std::find_if(stores.begin(), stores.end(), [&](const Store& x) {
                 return x.kind == r.backing && x.owned == owned;
             });
-            mach_vm_address_t target = reinterpret_cast<mach_vm_address_t>(g_base + r.base);
+            vm_address_t target = reinterpret_cast<vm_address_t>(g_base + r.base);
             vm_prot_t cur = VM_PROT_NONE, max = VM_PROT_NONE;
-            const kern_return_t kr = mach_vm_remap(
+            const kern_return_t kr = vm_remap(
                 mach_task_self(),
                 &target,
-                static_cast<mach_vm_size_t>(RoundUp(r.size, pageSize)),
+                static_cast<vm_size_t>(RoundUp(r.size, pageSize)),
                 0,
                 VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE,
                 mach_task_self(),
-                reinterpret_cast<mach_vm_address_t>(s.host + Offset(r)),
+                reinterpret_cast<vm_address_t>(s.host + Offset(r)),
                 FALSE,
                 &cur,
                 &max,
                 VM_INHERIT_NONE
             );
             if (kr != KERN_SUCCESS) {
-                throw std::runtime_error(std::string("mach_vm_remap guest alias failed: ") + mach_error_string(kr));
+                throw std::runtime_error(std::string("vm_remap guest alias failed: ") + mach_error_string(kr));
             }
             g_mappings.push_back({r.base, r.size, s.host + Offset(r)});
         }
@@ -149,7 +162,7 @@ void Initialize(const std::vector<RegionRequest>& regions) {
                 munmap(s.host, static_cast<size_t>(s.size));
             }
         }
-        mach_vm_deallocate(mach_task_self(), address, kGuestSpaceSize);
+        vm_deallocate(mach_task_self(), address, kGuestSpaceSize);
         g_mappings.clear();
         g_stores.clear();
         g_layout.clear();

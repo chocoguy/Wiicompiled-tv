@@ -22,6 +22,7 @@
 *.gcm
 *.wad
 Code.pul
+iso
 
 # Build output
 /build/

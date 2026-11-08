@@ -3,6 +3,9 @@
 // Flat 4 GiB guest address space constants used by translated accesses; see guest_flat_memory.h.
 #include <cstddef>
 #include <cstdint>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 namespace GuestFlat {
 
@@ -14,6 +17,15 @@ inline constexpr size_t kGuestPageSize = 0x1000;
 // 16 TiB: clear of the Windows ASan shadow (32 TiB) and of the usual image/heap
 // placement.
 inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'1000'0000'0000ull;
+#elif defined(__aarch64__) && defined(__APPLE__) && TARGET_OS_TV
+// 448 GiB. A tvOS app's address space ends at 454 GiB (512 GiB with the
+// extended-virtual-addressing entitlement), the shared cache covers 6-63 GiB
+// and a GPU carveout guard 63-448 GiB, which leaves this the only 4 GiB-aligned
+// slot (measured on an A15 on tvOS 27.2: docs/tvos-m0-findings.md). The macOS
+// base below is past the end. The runtime maps the guest before Metal or Dawn
+// start (SystemBridge::Initialize precedes aurora_initialize), which keeps the
+// slot free; it still loads with a single movz.
+inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'0070'0000'0000ull;
 #elif defined(__aarch64__) && defined(__APPLE__)
 // Keep this well above the low address ranges that Darwin's ASLR may use for
 // a PIE executable and its shared cache. Apple Silicon's user VA is wider

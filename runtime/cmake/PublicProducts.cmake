@@ -196,6 +196,11 @@ function(mkw_configure_product target)
             "${MKW_IOKIT_FRAMEWORK}" "${MKW_COREFOUNDATION_FRAMEWORK}" "${MKW_COREAUDIO_FRAMEWORK}")
         target_link_options(${target} PRIVATE
             "LINKER:-U,_OBJC_CLASS_$_MTLLogStateDescriptor")
+    elseif(MKW_PLATFORM_TVOS)
+        # The guest's boot thread runs on the host main thread (main.cpp, InvokeIndirectCpu).
+        # tvOS gives that thread 1,008 KiB unless the executable asks for more; tvOS honors
+        # -stack_size (mkw_tvos_main_stack_tests, run on an A15 under tvOS 27.2).
+        target_link_options(${target} PRIVATE "LINKER:-stack_size,${MKW_TVOS_MAIN_STACK_SIZE}")
     endif()
     if(EXISTS "${MKW_AURORA_DIR}/cmake/AuroraCopyRuntimeDLLs.cmake")
         include("${MKW_AURORA_DIR}/cmake/AuroraCopyRuntimeDLLs.cmake")

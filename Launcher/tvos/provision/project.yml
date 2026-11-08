@@ -1,0 +1,26 @@
+# Provisioning helper (xcodegen): an empty tvOS app with the real app's bundle ID and entitlements.
+# package_app.py builds it once with xcodebuild -allowProvisioningUpdates, which makes Xcode register
+# the App ID with its capabilities and download a matching profile; the CMake-built WiiCompiled.app is
+# then signed with that profile. It is never installed.
+name: WiiCompiledProvisioning
+options:
+  deploymentTarget:
+    tvOS: "26.0"
+targets:
+  WiiCompiledProvisioning:
+    type: application
+    platform: tvOS
+    sources:
+      - path: main.m
+    info:
+      path: ${PROVISION_BUILD_DIR}/Info.plist
+      properties:
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${PROVISION_BUNDLE_ID}
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ${PROVISION_ENTITLEMENTS}
+        TARGETED_DEVICE_FAMILY: "3"
+    scheme: {}

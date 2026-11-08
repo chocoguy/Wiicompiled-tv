@@ -193,7 +193,7 @@ if(MKW_PLATFORM_MACOS)
 
     add_executable(mkw_macos_guest_flat_memory_tests
         "${MKW_TEST_RUNTIME_DIR}/tests/macos_guest_flat_memory_tests.cpp"
-        "${MKW_TEST_RUNTIME_DIR}/src/guest_flat_memory_macos.cpp")
+        "${MKW_TEST_RUNTIME_DIR}/src/guest_flat_memory_darwin.cpp")
     target_include_directories(mkw_macos_guest_flat_memory_tests PRIVATE "${MKW_TEST_RUNTIME_DIR}/include")
     target_compile_features(mkw_macos_guest_flat_memory_tests PRIVATE cxx_std_17)
     add_test(NAME mkw_macos_guest_flat_memory_tests COMMAND mkw_macos_guest_flat_memory_tests)
@@ -204,4 +204,49 @@ if(MKW_PLATFORM_MACOS)
     target_include_directories(mkw_macos_external_audio_tests PRIVATE "${MKW_TEST_RUNTIME_DIR}/include")
     target_compile_features(mkw_macos_external_audio_tests PRIVATE cxx_std_17)
     add_test(NAME mkw_macos_external_audio_tests COMMAND mkw_macos_external_audio_tests)
+endif()
+
+if(MKW_PLATFORM_TVOS)
+    # The Apple Silicon host contracts again, built for the Apple TV. ctest runs them on the
+    # device when MKW_TVOS_TEST_DEVICE and MKW_TVOS_TEST_TEAM are set (runtime/CMakeLists.txt).
+    enable_language(ASM)
+    add_executable(mkw_tvos_context_abi_tests
+        "${MKW_TEST_RUNTIME_DIR}/tests/macos_context_abi_tests.cpp"
+        "${MKW_TEST_RUNTIME_DIR}/src/platform/macos/co_switch.S")
+
+    add_executable(mkw_tvos_host_context_tests
+        "${MKW_TEST_RUNTIME_DIR}/tests/host_context_tests.cpp"
+        "${MKW_TEST_RUNTIME_DIR}/src/host_context.cpp"
+        "${MKW_TEST_RUNTIME_DIR}/src/platform/macos/co_switch.S")
+    target_include_directories(mkw_tvos_host_context_tests PRIVATE "${MKW_TEST_RUNTIME_DIR}/include")
+
+    # Reserves the 4 GiB guest space at the tvOS base (448 GiB) and checks the aliases.
+    add_executable(mkw_tvos_guest_flat_memory_tests
+        "${MKW_TEST_RUNTIME_DIR}/tests/macos_guest_flat_memory_tests.cpp"
+        "${MKW_TEST_RUNTIME_DIR}/src/guest_flat_memory_darwin.cpp")
+    target_include_directories(mkw_tvos_guest_flat_memory_tests PRIVATE "${MKW_TEST_RUNTIME_DIR}/include")
+
+    # The guest's boot thread runs on the host main thread (main.cpp, InvokeIndirectCpu), whose
+    # stack is about 1 MiB on tvOS against macOS's 8 MiB. This links the way the products do
+    # and checks the larger main-thread stack is really there, not just reported.
+    add_executable(mkw_tvos_main_stack_tests "${MKW_TEST_RUNTIME_DIR}/tests/tvos_main_stack_tests.cpp")
+    target_link_options(mkw_tvos_main_stack_tests PRIVATE "LINKER:-stack_size,${MKW_TVOS_MAIN_STACK_SIZE}")
+    target_compile_definitions(mkw_tvos_main_stack_tests PRIVATE
+        MKW_EXPECTED_MAIN_STACK=${MKW_TVOS_MAIN_STACK_SIZE})
+
+    foreach(test mkw_tvos_context_abi_tests mkw_tvos_host_context_tests
+                 mkw_tvos_guest_flat_memory_tests mkw_tvos_main_stack_tests)
+        target_compile_features(${test} PRIVATE cxx_std_17)
+        add_test(NAME ${test} COMMAND ${test})
+    endforeach()
+
+    # devicectl cannot tell how these plain test apps ended, so every test executable gets an
+    # entry point that prints its own result (tests/tvos_test_entry.c, run_on_device.py).
+    get_property(_mkw_tvos_tests DIRECTORY PROPERTY TESTS)
+    foreach(test IN LISTS _mkw_tvos_tests)
+        if(TARGET ${test})
+            target_sources(${test} PRIVATE "${MKW_TEST_RUNTIME_DIR}/tests/tvos_test_entry.c")
+            target_link_options(${test} PRIVATE "LINKER:-e,_mkw_tvos_test_entry")
+        endif()
+    endforeach()
 endif()

@@ -14,6 +14,7 @@
 #endif
 
 #if defined(__APPLE__)
+#include <TargetConditionals.h>
 #include <mach-o/dyld.h>
 #include <pwd.h>
 #endif
@@ -73,11 +74,20 @@ std::filesystem::path ApplicationDataDirectory(std::string_view applicationName)
         return directory;
     }
 #elif defined(__APPLE__)
+#if TARGET_OS_TV
+    // A tvOS app cannot write Documents or create Library/Application Support (measured on
+    // tvOS 27.2, docs/tvos-m0-findings.md); Library/Caches is writable but may be purged
+    // while the app is not running, so saves and settings also need the tvOS persistence
+    // layer (porting plan M5). HOME is the app's data container.
+    constexpr const char* kDataParent = "Caches";
+#else
+    constexpr const char* kDataParent = "Application Support";
+#endif
     if (const char* home = std::getenv("HOME"); home && *home) {
-        return std::filesystem::path(home) / "Library" / "Application Support" / applicationName;
+        return std::filesystem::path(home) / "Library" / kDataParent / applicationName;
     }
     if (const passwd* user = getpwuid(getuid()); user && user->pw_dir && *user->pw_dir) {
-        return std::filesystem::path(user->pw_dir) / "Library" / "Application Support" / applicationName;
+        return std::filesystem::path(user->pw_dir) / "Library" / kDataParent / applicationName;
     }
 #endif
     return std::filesystem::current_path() / applicationName;

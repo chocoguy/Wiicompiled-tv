@@ -110,6 +110,27 @@ fallback - though this project's x86_64-only target only ever compiles amd64.c) 
 Source: <https://github.com/higan-emu/libco>. Full license text:
 `runtime/third_party/libco/LICENSE`.
 
+### TVPort / nxnative - MIT
+
+Copyright (c) 2026 seedds (nxnative); TVPort's additions are under the same license.
+`Launcher/tvos/tv_icon.swift` (the Apple TV layered icon and Top Shelf images) is copied unchanged
+from TVPort's `dm/ios/tools/tv_icon.swift`. The tvOS port also follows designs from TVPort without
+copying its code: the on-device probe, signing and `devicectl` install flow, and the save
+persistence planned for M5 (docs/tvos-porting-plan.md).
+Source: <https://github.com/68hctmzzjf-svg/TVPort> (a fork of <https://github.com/seedds/nxnative>).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions: The above copyright notice and this
+permission notice shall be included in all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 ---
 
 ## Fetched at build time and redistributed in release builds

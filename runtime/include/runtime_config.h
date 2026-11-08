@@ -30,6 +30,9 @@
 #include <cstdlib>
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 struct RuntimeUserConfig {
     std::optional<bool> widescreen;
@@ -212,6 +215,11 @@ inline std::optional<std::filesystem::path> ExecutableDirectory() {
 // derives from it and they must not disagree with each other.
 inline const std::optional<std::filesystem::path>& PortableRootDirectory() {
     static const std::optional<std::filesystem::path> root = []() -> std::optional<std::filesystem::path> {
+#if defined(__APPLE__) && TARGET_OS_TV
+        // The tvOS executable lives in a signed, read-only app bundle, so a portable root there
+        // could never hold user data.
+        return std::nullopt;
+#endif
         const auto executableDirectory = ExecutableDirectory();
         if (!executableDirectory) {
             return std::nullopt;
@@ -1036,7 +1044,27 @@ inline std::filesystem::path ResolveRelativeToConfig(const std::string& value) {
 // The extracted DATA directory. Empty when nothing is configured.
 inline std::filesystem::path ResolvedDvdRoot() {
     const std::string configured = DvdRoot();
-    return configured.empty() ? std::filesystem::path{} : ResolveRelativeToConfig(configured);
+    if (!configured.empty()) {
+        return ResolveRelativeToConfig(configured);
+    }
+#if defined(__APPLE__) && TARGET_OS_TV
+    // tvOS has no Setup to write Config.toml, so the game's DATA is found where
+    // Launcher/tvos/build-tvos.command puts it: inside the app bundle, or (its --data caches
+    // mode, for quick reinstalls) pushed once into Library/Caches beside the user data.
+    std::vector<std::filesystem::path> candidates;
+    if (const auto executableDirectory = ExecutableDirectory()) {
+        candidates.push_back(*executableDirectory / "DATA");
+    }
+    candidates.push_back(ApplicationDataDirectory() / "DATA");
+    for (const auto& candidate : candidates) {
+        std::error_code ec;
+        if (std::filesystem::is_directory(candidate / "files", ec) &&
+            std::filesystem::is_regular_file(candidate / "sys" / "fst.bin", ec)) {
+            return candidate;
+        }
+    }
+#endif
+    return {};
 }
 
 /// The canonical Retro Rewind installation the frontend owns, or "" when none is recorded.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Raises a tvOS app's address-space ceiling from 454 GiB to 512 GiB, which leaves 64 GiB free
+	     above the 448 GiB guest base instead of 6 GiB (docs/tvos-m0-findings.md). Needs a paid
+	     developer team; the provisioning helper registers it on the App ID. -->
+	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
+	<true/>
+</dict>
+</plist>

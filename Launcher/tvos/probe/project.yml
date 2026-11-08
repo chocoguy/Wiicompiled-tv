@@ -1,0 +1,43 @@
+# WiiCompiled tvOS feasibility probe (xcodegen). run-probe.sh sets the variables below.
+# The scene manifest is required: an app built with the tvOS 27 SDK that has no scene lifecycle is
+# stopped by UIKit (TVPort dm/ios/project_tv.yml).
+name: TVProbe
+options:
+  deploymentTarget:
+    tvOS: "26.0"
+targets:
+  TVProbe:
+    type: application
+    platform: tvOS
+    sources:
+      - path: Sources
+    dependencies:
+      # UIWindow.avDisplayManager is an AVKit category: with no AVKit symbol referenced, autolinking
+      # drops the framework and the selector is unrecognized at run time, so link it explicitly.
+      - sdk: AVKit.framework
+    info:
+      path: ${PROBE_BUILD_DIR}/Info.plist
+      properties:
+        CFBundleDisplayName: WiiCompiled Probe
+        ProbeVariant: ${PROBE_VARIANT}
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default
+                UISceneDelegateClassName: ProbeSceneDelegate
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${PROBE_BUNDLE_ID}
+        PRODUCT_NAME: TVProbe
+        DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ${PROBE_ENTITLEMENTS}
+        TARGETED_DEVICE_FAMILY: "3"
+        CLANG_ENABLE_OBJC_ARC: YES
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        OTHER_CFLAGS: $(inherited) -mcpu=apple-a15
+        OTHER_LDFLAGS: $(inherited) -weak_framework MetalFX
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    scheme: {}

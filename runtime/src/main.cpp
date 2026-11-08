@@ -57,6 +57,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 #include "abi_bridge.h"
 #include "audio_backend.h"
 #include "boot_race.h"
@@ -1584,7 +1588,10 @@ int RuntimeMain(int argc, char** argv) {
     }
 }
 
+#if !(defined(__APPLE__) && TARGET_OS_TV)
+// tvOS enters through SDL's UIKit application instead (src/platform/tvos/tvos_main.cpp).
 int main(int argc, char** argv) {
     return RuntimeMain(argc, argv);
 }
+#endif
 extern "C" bool g_dynamicAspectRatioEnabled = false;

@@ -1,0 +1,74 @@
+[layout:host] vm_page_size=16384 vm_kernel_page_size=16384 getpagesize=16384
+[layout:host] task min_address=0x104cc0000 max_address=0x7ffffe000000 (131071.97 GiB) virtual_size=466.14 GiB phys_footprint=1.1 MiB limit_bytes_remaining=0.0 MiB (task_vm_info count 93)
+[layout:host] 57 top-level regions, lowest 0x104cc0000, highest end 0x7f10000000 (508.25 GiB)
+[layout:host]   0x00104cc0000-0x00104d10000       0.3 MiB tag=0 (4 regions)
+[layout:host]   0x00104d10000-0x00104d18000       0.0 MiB tag=73 (1 regions)
+[layout:host]   0x00104d18000-0x00104ea4000       1.5 MiB tag=0 (2 regions)
+[layout:host]   0x00104ea4000-0x001052e8000       4.3 MiB tag=1 (6 regions)
+[layout:host]   0x001052e8000-0x001056e8000       4.0 MiB tag=7 (1 regions)
+[layout:host]   0x001056e8000-0x001056ec000       0.0 MiB tag=1 (1 regions)
+[layout:host]   0x001056ec000-0x001096f0000      64.0 MiB tag=22 (1 regions)
+[layout:host]   0x001096f0000-0x00109770000       0.5 MiB tag=1 (1 regions)
+[layout:host]   0x00137e00000-0x00137e04000       0.0 MiB tag=1 (1 regions)
+[layout:host]   0x00167140000-0x0016b140000      64.0 MiB tag=30 (2 regions)
+[layout:host]   0x00180000000-0x001e6000000    1632.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x001e6000000-0x001e7e64000      30.4 MiB tag=35 submap (1 regions)
+[layout:host]   0x001e7e64000-0x001f0d64000     143.0 MiB tag=0 (2 regions)
+[layout:host]   0x001f0d64000-0x001f2d64000      32.0 MiB tag=35 submap (2 regions)
+[layout:host]   0x001f2d64000-0x001f4000000      18.6 MiB tag=35 (1 regions)
+[layout:host]   0x001f4000000-0x001f5264000      18.4 MiB tag=35 submap (1 regions)
+[layout:host]   0x001f5264000-0x001f6f70000      29.0 MiB tag=0 (2 regions)
+[layout:host]   0x001f6f70000-0x001f8000000      16.6 MiB tag=35 submap (1 regions)
+[layout:host]   0x001f8000000-0x0026e000000    1888.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x0026e000000-0x0026fdd0000      29.8 MiB tag=35 submap (1 regions)
+[layout:host]   0x0026fdd0000-0x002769a0000     107.8 MiB tag=0 (2 regions)
+[layout:host]   0x002769a0000-0x00278000000      22.4 MiB tag=35 submap (1 regions)
+[layout:host]   0x00278000000-0x0027c000000      64.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x0027c000000-0x0027c33c000       3.2 MiB tag=35 submap (1 regions)
+[layout:host]   0x0027c33c000-0x0027e0f8000      29.7 MiB tag=0 (1 regions)
+[layout:host]   0x0027e0f8000-0x00280000000      31.0 MiB tag=35 submap (1 regions)
+[layout:host]   0x00280000000-0x002de000000    1504.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x002de000000-0x002dfd30000      29.2 MiB tag=35 submap (1 regions)
+[layout:host]   0x002dfd30000-0x002e5f90000      98.4 MiB tag=0 (2 regions)
+[layout:host]   0x002e5f90000-0x002e6000000       0.4 MiB tag=35 submap (1 regions)
+[layout:host]   0x002e6000000-0x002ea000000      64.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x002ea000000-0x002eac70000      12.4 MiB tag=35 submap (1 regions)
+[layout:host]   0x002eac70000-0x002ec088000      20.1 MiB tag=0 (2 regions)
+[layout:host]   0x002ec088000-0x002ee000000      31.5 MiB tag=35 submap (1 regions)
+[layout:host]   0x002ee000000-0x00fc0000000   52512.0 MiB tag=32 submap (1 regions)
+[layout:host]   0x00fc0000000-0x07000000000  394240.0 MiB tag=31 (2 regions)
+[layout:host]   0x0718c000000-0x0718c400000       4.0 MiB tag=2 (1 regions)
+[layout:host]   0x07910000000-0x07c11000000   12304.0 MiB tag=0 (1 regions)
+[layout:host]   0x07c11000000-0x07c11400000       4.0 MiB tag=2 (1 regions)
+[layout:host]   0x07c11400000-0x07f10000000   12268.0 MiB tag=0 (1 regions)
+[layout:host] 4 GiB slots   0-255 GiB: .##ssssssssssss#################################################
+[layout:host] 4 GiB slots 256-511 GiB: ################################################.#.......#######
+[layout:host] 4 GiB slots 512-767 GiB: ................................................................
+[layout:host] 4 GiB slots 768-1023 GiB: ................................................................
+[layout:host]   free gap 0x00000000000-0x00104cc0000 (4.1 GiB), 4 GiB-aligned slots from 0x0
+[layout:host]   free gap 0x07000000000-0x0718c000000 (6.2 GiB), 4 GiB-aligned slots from 0x7000000000
+[layout:host]   free gap 0x0718c400000-0x07910000000 (30.1 GiB), 4 GiB-aligned slots from 0x7200000000
+[layout:host]   free gap 0x07f10000000-0x7ffffe000000 (130563.7 GiB), 4 GiB-aligned slots from 0x8000000000
+[capacity] reserve    4 GiB anywhere: ok at 0x7000000000
+[capacity] reserve    8 GiB anywhere: ok at 0x718c400000
+[capacity] reserve   12 GiB anywhere: ok at 0x718c400000
+[capacity] reserve   16 GiB anywhere: ok at 0x718c400000
+[capacity] reserve   24 GiB anywhere: ok at 0x718c400000
+[capacity] reserve   32 GiB anywhere: ok at 0x7f10000000
+[capacity] reserve   48 GiB anywhere: ok at 0x7f10000000
+[capacity] reserve   64 GiB anywhere: ok at 0x7f10000000
+[capacity] reserve  128 GiB anywhere: ok at 0x7f10000000
+[capacity] reserve  256 GiB anywhere: ok at 0x7f10000000
+[capacity] reserve 1024 GiB anywhere: ok at 0x7f10000000
+[alias:vm_remap] base 0x8000000000 (512 GiB): OK - 8 views mapped in 0.03 ms, mirrors/atomics/zero-fill pass, fill 8.4 GB/s, copy 7.7 GB/s
+[alias:vm_remap] base 0x7000000000 (448 GiB): OK - 8 views mapped in 0.03 ms, mirrors/atomics/zero-fill pass, fill 9.7 GB/s, copy 9.0 GB/s
+[fixed:host] base 0xc00000000 (48 GiB): FAILED ((os/kern) no space available)
+[fixed:host] base 0x800000000 (32 GiB): FAILED ((os/kern) no space available)
+[fixed:host] base 0x400000000 (16 GiB): FAILED ((os/kern) no space available)
+[fixed:host] base 0x200000000 (8 GiB): FAILED ((os/kern) no space available)
+[fixed:host] 4 GiB FIXED reservation ok at GiB: 512,448,1024,2048,4096,8184
+[fixed:host] 4 GiB FIXED reservation failed at GiB: 48,32,16,8,4,12,20,24,28,36,40,44,52,56,60,64,128,256
+[fixed:host] preferred base: 0x8000000000 (512 GiB)
+[alias:file MAP_SHARED] base 0x8000000000 (512 GiB): OK - 8 views mapped in 0.26 ms, mirrors/atomics/zero-fill pass, fill 11.6 GB/s, copy 10.4 GB/s
+[signals] read of a PROT_NONE page: signal 10 (SIGBUS) at 0x104d20040, expected 0x104d20040: recovered OK
+[signals] write of a PROT_NONE page: signal 10 (SIGBUS) at 0x104d20040, expected 0x104d20040: recovered OK

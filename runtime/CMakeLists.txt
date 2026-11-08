@@ -5,8 +5,15 @@ cmake_minimum_required(VERSION 3.25)
 # accidentally inherit the running SDK's deployment version. This cache entry
 # is harmless on non-Apple platforms and remains overridable by a caller.
 if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING
-        "Minimum macOS version supported by WiiCompiled" FORCE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "tvOS")
+        # Apple TV 4K (3rd generation, A15) on tvOS 26, the floor the port targets
+        # (docs/tvos-porting-plan.md). MetalFX needs 27.1 and is weak-linked by aurora.
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING
+            "Minimum tvOS version supported by WiiCompiled" FORCE)
+    else()
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING
+            "Minimum macOS version supported by WiiCompiled" FORCE)
+    endif()
 endif()
 project(mkw_recompiled)
 
@@ -28,7 +35,17 @@ endif()
 
 if(WIN32 AND MINGW AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86_64)$")
     set(MKW_PLATFORM_WINDOWS TRUE)
+elseif(APPLE AND CMAKE_SYSTEM_NAME STREQUAL "tvOS")
+    # Cross-compiled from a Mac: -DCMAKE_SYSTEM_NAME=tvOS -DCMAKE_OSX_SYSROOT=appletvos
+    # -DCMAKE_OSX_ARCHITECTURES=arm64. Shares the Apple Silicon host code (Darwin VM, the
+    # co_switch.S fiber backend, Metal) with macOS, but none of its desktop integrations.
+    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|ARM64|aarch64)$")
+        message(FATAL_ERROR "WiiCompiled for tvOS supports arm64 only; pass -DCMAKE_OSX_ARCHITECTURES=arm64")
+    endif()
+    set(MKW_PLATFORM_TVOS TRUE)
+    set(MKW_PLATFORM_APPLE TRUE)
 elseif(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86_64|arm64|ARM64)$")
+    set(MKW_PLATFORM_APPLE TRUE)
     set(MKW_PLATFORM_MACOS TRUE)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64|X86_64)$")
         set(MKW_PLATFORM_MACOS_X86_64 TRUE)
@@ -39,7 +56,27 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(
     set(MKW_PLATFORM_LINUX TRUE)
 else()
     message(FATAL_ERROR
-        "WiiCompiled supports 64-bit LLVM-MinGW Clang on Windows, native Linux x86_64/aarch64, or Apple Clang on macOS x86_64/arm64")
+        "WiiCompiled supports 64-bit LLVM-MinGW Clang on Windows, native Linux x86_64/aarch64, or Apple Clang on macOS x86_64/arm64 and tvOS arm64")
+endif()
+
+if(MKW_PLATFORM_TVOS)
+    # On-device tests: with both set, ctest runs every test executable on that Apple TV through
+    # Launcher/tvos/run_on_device.py (signed with a tvOS team profile Xcode has downloaded).
+    # Without them the tvOS tests still build, but ctest cannot run them on the Mac.
+    set(MKW_TVOS_TEST_DEVICE "" CACHE STRING
+        "UDID of the paired Apple TV that runs ctest's tests (xcrun devicectl list devices)")
+    set(MKW_TVOS_TEST_TEAM "" CACHE STRING
+        "Apple Developer team ID whose tvOS provisioning profile signs the on-device tests")
+    # The guest's boot thread runs on the host main thread, so tvOS executables link with the
+    # main-thread stack macOS gives by default (tvOS gives about 1 MiB).
+    set(MKW_TVOS_MAIN_STACK_SIZE "0x800000" CACHE STRING
+        "Main-thread stack size the tvOS executables link with (-stack_size)")
+    if(MKW_TVOS_TEST_DEVICE AND MKW_TVOS_TEST_TEAM)
+        find_program(MKW_HOST_PYTHON3 python3 REQUIRED NO_CMAKE_FIND_ROOT_PATH)
+        # Set before any test target exists: targets copy it into CROSSCOMPILING_EMULATOR.
+        set(CMAKE_CROSSCOMPILING_EMULATOR
+            "${MKW_HOST_PYTHON3};-I;${CMAKE_CURRENT_LIST_DIR}/../Launcher/tvos/run_on_device.py;--device;${MKW_TVOS_TEST_DEVICE};--team;${MKW_TVOS_TEST_TEAM};--min-os;${CMAKE_OSX_DEPLOYMENT_TARGET};--")
+    endif()
 endif()
 
 if(MKW_PLATFORM_WINDOWS)
@@ -236,7 +273,7 @@ else()
         set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_METAL OFF CACHE BOOL "" FORCE)
         set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
-    elseif(MKW_PLATFORM_MACOS)
+    elseif(MKW_PLATFORM_APPLE)
         set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
         set(DAWN_ENABLE_METAL ON CACHE BOOL "" FORCE)
@@ -287,6 +324,19 @@ else()
     set(AURORA_TARGET_RVL OFF CACHE BOOL "" FORCE)
     # Every dependency comes from the pinned sources, never the build host.
     set(AURORA_USE_SYSTEM_DEPENDENCIES OFF CACHE BOOL "" FORCE)
+    if(MKW_PLATFORM_TVOS)
+        # No prebuilt Dawn or SDL3 exists for tvOS (aurora's Dawn packages stop at ios-arm64,
+        # and an iOS archive cannot link into a tvOS binary), so both build from the pinned
+        # sources. Set before aurora resolves "auto" so a stray host package is never picked up.
+        set(AURORA_DAWN_PROVIDER "vendor" CACHE STRING "" FORCE)
+        set(AURORA_SDL3_PROVIDER "vendor" CACHE STRING "" FORCE)
+        set(AURORA_DAWN_LINKAGE "static" CACHE STRING "" FORCE)
+        set(AURORA_SDL3_LINKAGE "static" CACHE STRING "" FORCE)
+        # Protobuf only backs Tint's IR binary format (fuzzers and tests), and cross-compiling
+        # it would need a host protoc.
+        set(DAWN_BUILD_PROTOBUF OFF CACHE BOOL "" FORCE)
+        set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
+    endif()
 
     # MinGW/WSL can choke on SDL precompiled headers; disable PCH for aurora/SDL.
     set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
@@ -344,18 +394,31 @@ endif()
 # a registration file is silently never compiled and never errors. The stale-glob
 # failure mode is worth far more than the milliseconds.
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
-if(MKW_PLATFORM_MACOS)
+if(MKW_PLATFORM_APPLE)
     list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/guest_flat_memory.cpp")
-    if(MKW_PLATFORM_MACOS_ARM64)
+    if(MKW_PLATFORM_MACOS_ARM64 OR MKW_PLATFORM_TVOS)
         # HostContext's Apple Silicon backend is implemented in a small assembly
         # companion. It must be part of the product runtime as well as the
         # standalone context test; otherwise the final executable is missing
-        # mkw_co_init/mkw_co_switch at link time.
+        # mkw_co_init/mkw_co_switch at link time. tvOS shares the Darwin AArch64 ABI.
         enable_language(ASM)
         list(APPEND SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/platform/macos/co_switch.S")
     endif()
 else()
-    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/guest_flat_memory_macos.cpp")
+    list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_LIST_DIR}/src/guest_flat_memory_darwin.cpp")
+endif()
+if(MKW_PLATFORM_TVOS)
+    # Desktop-only integrations: the CoreAudio HAL process list behind music ducking is
+    # macOS API, and Steam Input's layout helper uses libproc and posix_spawn, which tvOS
+    # prohibits. src/platform/tvos holds their tvOS stand-ins.
+    list(REMOVE_ITEM SOURCES
+        "${CMAKE_CURRENT_LIST_DIR}/src/external_audio_macos.cpp"
+        "${CMAKE_CURRENT_LIST_DIR}/src/steam_input_layout.cpp")
+    # SDL_main.h defines main as a macro; keep that file in a translation unit of its own.
+    set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/platform/tvos/tvos_main.cpp" PROPERTIES
+        SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON)
+else()
+    list(FILTER SOURCES EXCLUDE REGEX "/src/platform/tvos/")
 endif()
 set(MKW_PLATFORM_SOURCE "${CMAKE_CURRENT_LIST_DIR}/src/platform/host_platform.cpp")
 set(MKW_BASE_PRODUCT_SOURCE "${CMAKE_CURRENT_LIST_DIR}/src/product/base_product.cpp")
@@ -410,28 +473,36 @@ if(MKW_BUILD_PRODUCTS)
 
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/PublicProducts.cmake")
 else()
-    if(MKW_PLATFORM_MACOS)
+    if(MKW_PLATFORM_APPLE)
         # Compile-only audit of native runtime sources. It deliberately avoids
         # translated products until their host dependencies are portable.
         # runtime/src is game-independent; per-game glue lives in runtime/game.
-        add_library(mkw_macos_native_compile OBJECT ${SOURCES})
-        target_include_directories(mkw_macos_native_compile PRIVATE
+        if(MKW_PLATFORM_TVOS)
+            set(_mkw_native_audit mkw_tvos_native_compile)
+        else()
+            set(_mkw_native_audit mkw_macos_native_compile)
+        endif()
+        add_library(${_mkw_native_audit} OBJECT ${SOURCES})
+        target_include_directories(${_mkw_native_audit} PRIVATE
             "${CMAKE_CURRENT_LIST_DIR}/include" "${CMAKE_CURRENT_LIST_DIR}/src"
             "${CMAKE_CURRENT_LIST_DIR}/.." "${MKW_AURORA_DIR}/include")
-        target_compile_features(mkw_macos_native_compile PRIVATE cxx_std_20)
-        target_compile_definitions(mkw_macos_native_compile PRIVATE SDL_MAIN_HANDLED TARGET_PC)
-        target_link_libraries(mkw_macos_native_compile PRIVATE
+        target_compile_features(${_mkw_native_audit} PRIVATE cxx_std_20)
+        target_compile_definitions(${_mkw_native_audit} PRIVATE SDL_MAIN_HANDLED TARGET_PC)
+        target_link_libraries(${_mkw_native_audit} PRIVATE
             aurora::gx aurora::pad aurora::si aurora::vi aurora::mtx
             mkw::pugixml mkw::toml11 mkw::cryptopp mkw::mbedtls)
         if(MKW_PLATFORM_MACOS_X86_64)
-            target_link_libraries(mkw_macos_native_compile PRIVATE mkw::libco)
-            target_compile_options(mkw_macos_native_compile PRIVATE
+            target_link_libraries(${_mkw_native_audit} PRIVATE mkw::libco)
+            target_compile_options(${_mkw_native_audit} PRIVATE
                 -march=x86-64-${MKW_X86_CPU_PROFILE})
             if(MKW_X86_CPU_PROFILE STREQUAL "v2")
-                target_compile_definitions(mkw_macos_native_compile PRIVATE MKW_X86_CPU_PROFILE_V2=1)
+                target_compile_definitions(${_mkw_native_audit} PRIVATE MKW_X86_CPU_PROFILE_V2=1)
             endif()
+        elseif(MKW_PLATFORM_TVOS)
+            # The products' CPU floor (-mcpu=apple-a15), so the audit sees what they will see.
+            mkw_apply_baseline_arch(${_mkw_native_audit})
         endif()
-        set_target_properties(mkw_macos_native_compile PROPERTIES UNITY_BUILD OFF)
+        set_target_properties(${_mkw_native_audit} PROPERTIES UNITY_BUILD OFF)
     endif()
     add_custom_target(mkw_platform_paths_check DEPENDS mkw_platform)
     message(STATUS "Translated product targets disabled (MKW_BUILD_PRODUCTS=OFF)")
