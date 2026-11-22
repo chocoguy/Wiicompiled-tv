@@ -3,7 +3,7 @@
   "id": "wiicompiled-tv",
   "name": "WiiCompiled",
   "game": "Mario Kart Wii (Wii; PAL, NTSC-U or NTSC-J)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.0.0",
 
   "entry": "tools/tvos/port",
