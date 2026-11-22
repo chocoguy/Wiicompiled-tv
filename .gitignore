@@ -68,6 +68,9 @@ project.lock.json
 /.vscode/
 /.idea/
 /tools/*
+# The tvOS fork's build engine and release script are tracked.
+!/tools/tvos/
+!/tools/release.sh
 __pycache__/
 /TEMP/
 /tmp/

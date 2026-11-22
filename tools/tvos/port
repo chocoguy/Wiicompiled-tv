@@ -1,0 +1,666 @@
+#!/usr/bin/env python3
+"""Builds the Apple TV app from your own Mario Kart Wii disc: the entry point that port.json names.
+
+    tools/tvos/port check   [options]    what this Mac is missing, and whether the disc is a supported one
+    tools/tvos/port prepare [options]    reads the disc: extracts and verifies it into Assets/, then
+                                         translates the game into generated/
+    tools/tvos/port build   [options]    prepares if it's needed, then builds, packages and signs WiiCompiled.app
+    tools/tvos/port install --device D   installs the built app on the Apple TV (it never starts it)
+    tools/tvos/port installed --device D what's installed on the Apple TV: version, build
+    tools/tvos/port clean   [options]    removes the build and everything prepare made
+
+Options, each also a field of --context:
+    --platform P       tvos, the only platform this port builds (accepted for the installer's sake)
+    --disc PATH        a disc image of your own copy: ISO, WBFS, CISO, RVZ, WIA or GCZ
+    --team ID          the Apple Developer team that signs the app (default: the one signed in to Xcode,
+                       a paid one first). A free personal team works, but its installs stop opening
+                       after 7 days.
+    --bundle-id ID     default: org.wiicompiled.WiiCompiled.<team ID, lower case>
+    --device ID        the Apple TV (xcrun devicectl list devices): its identifier, UDID or name
+    --data MODE        bundle (the default: the game data goes inside the app) or caches (left out, for
+                       Launcher/tvos/build-tvos.command to push into the app's caches once)
+    --work-dir DIR     where the build goes (default: build/port). The extracted disc and the
+                       translation stay in the repository's Assets/ and generated/, which the
+                       existing build scripts use.
+    --context FILE     the same as JSON: {"team", "bundleId", "device", "workDir", "inputs": {"disc"}}
+    --json             one JSON event per line on stdout; the tools' own output goes to stderr
+
+Tools are found on PATH; WIICOMPILED_<NAME> (WIICOMPILED_NODTOOL, WIICOMPILED_DOTNET, ...) overrides one.
+WiiCompiled Installer.app (apps/installer) runs it with --json. Only Python 3's standard library is used.
+"""
+import argparse
+import datetime
+import json
+import os
+import platform
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import List, Optional
+
+ROOT = Path(__file__).resolve().parents[2]
+LAUNCHER = ROOT / 'Launcher'
+ASSETS = ROOT / 'Assets'
+GENERATED = ROOT / 'generated'
+IMAGE_TYPES = {'.iso', '.wbfs', '.ciso', '.rvz', '.wia', '.gcz'}
+DEVICE = 'Apple TV'
+TARGET = 'WiiCompiled'
+APP_SIZE = 'about 3 GB'
+
+MIN_XCODE = (27, 0)
+MIN_CMAKE = (3, 25)
+MIN_DOTNET = 8
+
+JSON = False
+
+
+class Failure(Exception):
+    def __init__(self, code: str, message: str, fix: str = ''):
+        super().__init__(message)
+        self.code, self.message, self.fix = code, message, fix
+
+
+# Events --------------------------------------------------------------------------------------------
+
+def emit(event: str, **fields) -> None:
+    if JSON:
+        print(json.dumps({'event': event, **fields}), flush=True)
+        return
+    if event == 'stage':
+        print(f"==> {fields['label']}", flush=True)
+    elif event == 'check':
+        mark = 'ok ' if fields['ok'] else 'NO '
+        print(f"{mark} {fields['label']}: {fields['detail']}", flush=True)
+        if not fields['ok'] and fields.get('fix'):
+            print(f"    {fields['fix']}", flush=True)
+    elif event == 'error':
+        print(f"error: {fields['message']}", file=sys.stderr, flush=True)
+        if fields.get('fix'):
+            print(f"  {fields['fix']}", file=sys.stderr, flush=True)
+    elif event == 'warning':
+        print(f"warning: {fields['message']}", flush=True)
+    elif event == 'result':
+        print(f"Built {fields['app']}", flush=True)
+        if fields.get('expires'):
+            print(f"Its profile expires {fields['expires'][:10]}.", flush=True)
+    elif event == 'installed':
+        if fields.get('present'):
+            print(f"Installed: {fields.get('version')} (build {fields.get('build')})", flush=True)
+        else:
+            print('Not installed.', flush=True)
+    elif event == 'note':
+        print(fields['message'], flush=True)
+
+
+def stage(name: str, label: str) -> None:
+    emit('stage', id=name, label=label)
+
+
+def run(argv: list, **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.run([str(a) for a in argv], capture_output=True, text=True, **kwargs)
+
+
+def stream(argv: list, cwd: Optional[Path] = None, on_line=None, env=None) -> int:
+    """Runs a tool with its output passed to stderr (stdout is the events' in --json mode)."""
+    process = subprocess.Popen([str(a) for a in argv], cwd=cwd, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, errors='replace', env=env)
+    for line in process.stdout:
+        sys.stderr.write(line)
+        if on_line:
+            on_line(line.rstrip('\n'))
+    return process.wait()
+
+
+def tool(name: str) -> Optional[str]:
+    """A tool's path: WIICOMPILED_<NAME> if it is set, else the first on PATH."""
+    override = os.environ.get(f'WIICOMPILED_{name.upper()}')
+    if override:
+        return override if os.access(override, os.X_OK) else None
+    return shutil.which(name)
+
+
+def need(name: str, fix: str) -> str:
+    found = tool(name)
+    if not found:
+        raise Failure(f'{name}-missing', f'{name} was not found.', fix)
+    return found
+
+
+TOOL_FIXES = {
+    'cmake': 'WiiCompiled Installer downloads it in Setup; from the Terminal: brew install cmake',
+    'ninja': 'WiiCompiled Installer downloads it in Setup; from the Terminal: brew install ninja',
+    'dotnet': 'WiiCompiled Installer downloads it in Setup; from the Terminal: brew install --cask dotnet-sdk',
+    'nodtool': 'WiiCompiled Installer downloads it in Setup; from the Terminal, download nodtool-macos-arm64 '
+               'from github.com/encounter/nod/releases and set WIICOMPILED_NODTOOL to it',
+    'xcodegen': 'WiiCompiled Installer downloads it in Setup; from the Terminal: brew install xcodegen',
+}
+
+
+def tool_env() -> dict:
+    """The environment for the build scripts: each tool's folder first on PATH, and .NET allowed to
+    roll forward when only a newer runtime than the translator's (8) is installed."""
+    env = dict(os.environ)
+    folders = []
+    for name in ('cmake', 'ninja', 'dotnet', 'nodtool', 'xcodegen'):
+        found = tool(name)
+        if found and str(Path(found).parent) not in folders:
+            folders.append(str(Path(found).parent))
+    env['PATH'] = os.pathsep.join(folders + [env.get('PATH', '')])
+    dotnet = tool('dotnet')
+    if dotnet:
+        env.setdefault('DOTNET_ROOT', str(Path(dotnet).resolve().parent))
+        runtimes = run([dotnet, '--list-runtimes'])
+        if not re.search(r'^Microsoft\.NETCore\.App 8\.', runtimes.stdout, re.MULTILINE):
+            env['DOTNET_ROLL_FORWARD'] = 'Major'
+    env['DOTNET_CLI_TELEMETRY_OPTOUT'] = '1'
+    env['DOTNET_NOLOGO'] = '1'
+    return env
+
+
+# Context -------------------------------------------------------------------------------------------
+
+class Context:
+    def __init__(self, args):
+        data = {}
+        if args.context:
+            data = json.loads(Path(args.context).expanduser().read_text())
+        inputs = data.get('inputs') or {}
+        self.disc = args.disc or inputs.get('disc')
+        self.team = args.team or data.get('team') or ''
+        self.bundle_id = args.bundle_id or data.get('bundleId') or ''
+        self.device = getattr(args, 'device', None) or data.get('device') or ''
+        self.data = args.data or data.get('data') or 'bundle'
+        platform_name = args.platform or data.get('platform') or 'tvos'
+        if platform_name != 'tvos':
+            raise Failure('platform', f'This port builds for the Apple TV only, not {platform_name}.',
+                          'Pass --platform tvos.')
+        work = args.work_dir or data.get('workDir') or str(ROOT / 'build' / 'port')
+        self.work = Path(work).expanduser().resolve()
+
+    def signing(self) -> None:
+        """Fills in the team and bundle ID. A free personal team works, with a note about expiry."""
+        teams = xcode_teams()
+        if not self.team:
+            if not teams:
+                raise Failure('xcode-account', 'No Apple ID is signed in to Xcode.',
+                              'Sign in under Xcode > Settings > Accounts (a free Apple ID works), or pass --team.')
+            paid = [t for t in teams if not t['free']]
+            self.team = (paid or teams)[0]['id']
+        known = next((t for t in teams if t['id'] == self.team), None)
+        if not known and teams:
+            raise Failure('xcode-account', f"Team {self.team} isn't signed in to Xcode.",
+                          'Sign in to its Apple ID under Xcode > Settings > Accounts.')
+        if known and known['free']:
+            emit('note', message=f"{known['name'] or self.team} is a free personal team: the app stops opening "
+                                 'after 7 days. Reinstall it to renew.')
+        if not self.bundle_id:
+            self.bundle_id = f'org.wiicompiled.WiiCompiled.{self.team.lower()}'
+
+
+def xcode_teams() -> List[dict]:
+    """The teams of the Apple IDs signed in to Xcode (Settings > Accounts)."""
+    exported = run(['defaults', 'export', 'com.apple.dt.Xcode', '-'])
+    try:
+        prefs = plistlib.loads(exported.stdout.encode()) if exported.returncode == 0 else {}
+    except Exception:
+        prefs = {}
+    teams = []
+    for account in prefs.get('IDEProvisioningTeamByIdentifier', {}).values():
+        for team in account:
+            if team.get('teamID') and all(t['id'] != team['teamID'] for t in teams):
+                teams.append({'id': team['teamID'], 'name': team.get('teamName', ''),
+                              'free': bool(team.get('isFreeProvisioningTeam'))})
+    return teams
+
+
+# The disc ------------------------------------------------------------------------------------------
+
+def supported_releases() -> dict:
+    """game_id -> region, from the projects/*/recomp.yml that pin each supported release."""
+    releases = {}
+    for project in sorted((ROOT / 'projects').glob('*/recomp.yml')):
+        text = project.read_text()
+        game = re.search(r'^\s*game_id:\s*([A-Z0-9]{6})', text, re.MULTILINE)
+        region = re.search(r'^\s*region:\s*(\S+)', text, re.MULTILINE)
+        if game:
+            code = region.group(1) if region else ''
+            releases[game.group(1)] = {'P': 'PAL', 'E': 'NTSC-U', 'J': 'NTSC-J'}.get(code, code or game.group(1))
+    return releases
+
+
+def source_of(ctx: Context) -> Path:
+    if not ctx.disc:
+        raise Failure('disc-missing', 'No disc given.', 'Pass --disc with a disc image of your own Mario Kart Wii.')
+    source = Path(ctx.disc).expanduser().resolve()
+    if not source.is_file():
+        raise Failure('disc-missing', f'{source} does not exist.')
+    if source.suffix.lower() not in IMAGE_TYPES:
+        raise Failure('disc-unsupported', f'{source.name} is not a disc image this tool reads.',
+                      f"Use one of: {', '.join(sorted(t[1:].upper() for t in IMAGE_TYPES))}.")
+    return source
+
+
+def disc_info(source: Path) -> dict:
+    nodtool = need('nodtool', TOOL_FIXES['nodtool'])
+    out = run([nodtool, 'info', source])
+    text = out.stdout + out.stderr
+    game = re.search(r'Game ID:\s*(\S+)', text)
+    if out.returncode != 0 or not game:
+        raise Failure('disc-unreadable', f"{source.name} isn't a disc image nodtool can read.",
+                      'Make the image again from your own disc.')
+    title = re.search(r'Game title:\s*(.+)|Title:\s*(.+)', text)
+    return {'gameId': game.group(1), 'title': next((g for g in title.groups() if g), '').strip() if title else ''}
+
+
+def check_game(info: dict) -> str:
+    releases = supported_releases()
+    if info['gameId'] not in releases:
+        raise Failure('wrong-game', f"This disc is {info['gameId']} ({info['title'] or 'unknown'}), "
+                                    'not a supported Mario Kart Wii release.',
+                      f"The port needs Mario Kart Wii: {', '.join(sorted(releases))}.")
+    return releases[info['gameId']]
+
+
+def stamp_of(source: Path) -> dict:
+    status = source.stat()
+    return {'source': str(source), 'size': status.st_size, 'mtime': int(status.st_mtime)}
+
+
+def source_version() -> dict:
+    """The release being built: port.json's version (release.sh bumps it at each tag) and the commit."""
+    try:
+        version = json.loads((ROOT / 'port.json').read_text())['version']
+    except (OSError, ValueError, KeyError):
+        version = '0.0.1'
+    commit = run(['git', '-C', ROOT, 'rev-parse', '--short', 'HEAD'])
+    return {'version': version, 'commit': commit.stdout.strip() if commit.returncode == 0 else ''}
+
+
+def prepared_ok() -> bool:
+    return ((ASSETS / 'main.dol').is_file() and (ASSETS / 'DATA' / 'sys' / 'fst.bin').is_file()
+            and (GENERATED / 'build_shards').is_dir())
+
+
+def prepare(ctx: Context) -> dict:
+    """Extracts and translates the disc. Does nothing when the same disc was prepared from the same source."""
+    record_path = ctx.work / 'prepared.json'
+    source = source_of(ctx)
+    commit = source_version()['commit']
+    try:
+        record = json.loads(record_path.read_text())
+    except (OSError, ValueError):
+        record = None
+    if record and record.get('stamp') == stamp_of(source) and record.get('commit') == commit and prepared_ok():
+        emit('note', message='The disc is already prepared.')
+        return record
+
+    stage('disc', 'Reading your disc')
+    info = disc_info(source)
+    region = check_game(info)
+    env = tool_env()
+
+    stage('extract', 'Extracting the game (about 2.5 GB)')
+    lines: List[str] = []
+    extract = [LAUNCHER / 'macos' / 'extract-disc.command', '--workspace', ROOT, '--game', source,
+               '--assets-dir', ASSETS, '--nodtool', need('nodtool', TOOL_FIXES['nodtool'])]
+    if stream(extract, cwd=ROOT, on_line=lines.append, env=env) != 0:
+        raise explain(lines, ctx, 'extract-failed', "Couldn't extract the disc.")
+
+    stage('translate', 'Translating the game (the longest step on a first build)')
+    lines = []
+    translate = [LAUNCHER / 'local-build-macos.command', '--workspace', ROOT, '--translate-only',
+                 '--profile', 'base', '--dotnet', need('dotnet', TOOL_FIXES['dotnet']),
+                 '--cmake', need('cmake', TOOL_FIXES['cmake']), '--ninja', need('ninja', TOOL_FIXES['ninja'])]
+    if stream(translate, cwd=ROOT, on_line=lines.append, env=env) != 0:
+        raise explain(lines, ctx, 'translate-failed', "Couldn't translate the game.")
+    if not prepared_ok():
+        raise Failure('translate-failed', 'The translation finished without its build shards.',
+                      'Run: tools/tvos/port clean, then build again.')
+
+    record = {'stamp': stamp_of(source), 'commit': commit, 'gameId': info['gameId'], 'region': region,
+              'assets': str(ASSETS), 'generated': str(GENERATED)}
+    record_path.write_text(json.dumps(record, indent=2) + '\n')
+    emit('prepared', gameId=info['gameId'], region=region, assets=str(ASSETS))
+    return record
+
+
+# Check ---------------------------------------------------------------------------------------------
+
+def version_of(text: str) -> tuple:
+    found = re.search(r'(\d+)\.(\d+)', text)
+    return (int(found.group(1)), int(found.group(2))) if found else (0, 0)
+
+
+def first_line(argv: list) -> str:
+    out = run(argv)
+    return (out.stdout or out.stderr).strip().splitlines()[0] if out.returncode == 0 and (out.stdout or out.stderr).strip() else ''
+
+
+def cmd_check(ctx: Context) -> int:
+    results = []
+
+    def check(name: str, label: str, ok: bool, detail: str, fix: str = '') -> None:
+        results.append(ok)
+        emit('check', id=name, label=label, ok=bool(ok), detail=detail, fix='' if ok else fix)
+
+    check('mac', 'Apple silicon Mac', platform.machine() == 'arm64', platform.machine(),
+          'The build runs on Apple silicon only.')
+
+    xcode_line = first_line(['xcodebuild', '-version']) if shutil.which('xcodebuild') else ''
+    check('xcode', 'Xcode 27 or later', version_of(xcode_line) >= MIN_XCODE, xcode_line or 'not found',
+          'Install Xcode from the App Store, open it once, then: sudo xcode-select -s /Applications/Xcode.app')
+
+    sdks = run(['xcodebuild', '-showsdks', '-json']) if xcode_line else None
+    try:
+        found = [s['canonicalName'] for s in json.loads(sdks.stdout or '[]')
+                 if s.get('platform') == 'appletvos'] if sdks and sdks.returncode == 0 else []
+    except ValueError:
+        found = []
+    check('tvos-platform', 'The tvOS platform', bool(found), found[-1] if found else 'not installed',
+          'Xcode > Settings > Components, or: xcodebuild -downloadPlatform tvOS')
+
+    cmake = tool('cmake')
+    cmake_line = first_line([cmake, '--version']) if cmake else ''
+    check('cmake', 'CMake 3.25 or later', version_of(cmake_line) >= MIN_CMAKE, cmake_line or 'not found',
+          TOOL_FIXES['cmake'])
+
+    ninja = tool('ninja')
+    ninja_line = first_line([ninja, '--version']) if ninja else ''
+    check('ninja', 'Ninja', bool(ninja_line), ninja_line or 'not found', TOOL_FIXES['ninja'])
+
+    dotnet = tool('dotnet')
+    sdk_lines = run([dotnet, '--list-sdks']).stdout.strip().splitlines() if dotnet else []
+    newest = max((int(m.group(1)) for m in (re.match(r'(\d+)\.', line) for line in sdk_lines) if m), default=0)
+    check('dotnet', f'.NET SDK {MIN_DOTNET} or later', newest >= MIN_DOTNET,
+          sdk_lines[-1].split(' ')[0] if sdk_lines else 'not found', TOOL_FIXES['dotnet'])
+
+    nodtool = tool('nodtool')
+    nod_line = first_line([nodtool, '--version']) if nodtool else ''
+    check('nodtool', 'nodtool (reads the disc)', bool(nodtool), nod_line or ('found' if nodtool else 'not found'),
+          TOOL_FIXES['nodtool'])
+
+    xcodegen = tool('xcodegen')
+    xcodegen_line = first_line([xcodegen, '--version']) if xcodegen else ''
+    check('xcodegen', 'XcodeGen (asks Xcode for a profile)', bool(xcodegen),
+          xcodegen_line or ('found' if xcodegen else 'not found'), TOOL_FIXES['xcodegen'])
+
+    aurora = (ROOT / 'aurora-main' / 'CMakeLists.txt').is_file()
+    check('submodule', 'The aurora-main submodule', aurora, 'present' if aurora else 'missing',
+          'git submodule update --init --recursive')
+
+    teams = xcode_teams()
+    if ctx.team:
+        known = next((t for t in teams if t['id'] == ctx.team), None)
+        ok = bool(known)
+        detail = (f"{known['name']} ({known['id']})" + (', a free personal team: installs open for 7 days'
+                                                         if known['free'] else '')
+                  if known else f'{ctx.team} is not signed in to Xcode')
+    else:
+        paid = [t for t in teams if not t['free']]
+        best = (paid or teams or [None])[0]
+        ok = best is not None
+        detail = (f"{best['name']} ({best['id']})" + (', a free personal team: installs open for 7 days'
+                                                      if best['free'] else '')) if best else 'no Apple ID'
+    check('account', 'An Apple ID signed in to Xcode', ok, detail,
+          'Sign in under Xcode > Settings > Accounts. A free Apple ID works; its installs open for 7 days. '
+          'A paid Apple Developer membership lasts a year.')
+
+    if ctx.disc:
+        try:
+            source = source_of(ctx)
+            info = disc_info(source)
+            region = check_game(info)
+            check('disc', 'Your disc', True, f"{info['title'] or 'Mario Kart Wii'} ({info['gameId']}, {region})")
+        except Failure as failure:
+            check('disc', 'Your disc', False, failure.message, failure.fix)
+
+    return 0 if all(results) else 1
+
+
+# Build ---------------------------------------------------------------------------------------------
+
+# What a failed step said, and what to tell the user. The first that matches wins.
+KNOWN_FAILURES = [
+    (r'No Accounts?\b|No Account for Team|not signed in',
+     'xcode-account', "Xcode isn't signed in to the team's Apple ID.", 'Sign in under Xcode > Settings > Accounts.'),
+    (r'has no devices|no devices from which|Xcode made no profile',
+     'no-devices', 'The team has no Apple TV registered.',
+     "Pair the Apple TV in Xcode's Devices window, and pass --device with it switched on and awake."),
+    (r'(?:App ID|identifier).*(?:is not available|cannot be registered|already in use)',
+     'bundle-id-taken', 'The bundle ID {bundle} belongs to another team.', 'Pass a different --bundle-id.'),
+    (r'[Nn]o (?:signing certificate|certificate|identity)',
+     'certificate', 'No development certificate for the team is on this Mac.',
+     'Xcode > Settings > Accounts: select the team, Manage Certificates, and add an Apple Development certificate.'),
+    (r'is not a supported Mario Kart Wii release|does not match the clean',
+     'wrong-version', "The disc isn't a clean copy of a supported Mario Kart Wii release.",
+     'Make the image again from your own unmodified disc (PAL, NTSC-U or NTSC-J).'),
+    (r'No space left on device',
+     'disk-full', 'The disk is full.', 'The build needs about 12 GB free.'),
+]
+
+
+def explain(lines: List[str], ctx: Context, code: str = 'build-failed', fallback: str = '') -> Failure:
+    errors = [line for line in lines if re.search(r'\berror\b|failed|FAILED', line)] or lines[-20:]
+    text = '\n'.join(errors)
+    for pattern, known_code, message, fix in KNOWN_FAILURES:
+        if re.search(pattern, text):
+            return Failure(known_code, message.format(bundle=ctx.bundle_id), fix.format(bundle=ctx.bundle_id))
+    first = next((line.strip() for line in errors if line.strip()), fallback or 'The build failed.')
+    return Failure(code, (fallback + ' ' if fallback else '') + first[:400], 'The full log has the details.')
+
+
+def profile_of(app: Path) -> dict:
+    decoded = run(['security', 'cms', '-D', '-i', app / 'embedded.mobileprovision'])
+    if decoded.returncode != 0:
+        return {}
+    try:
+        return plistlib.loads(decoded.stdout.encode())
+    except Exception:
+        return {}
+
+
+def hardware_udid(device: str) -> str:
+    """The UDID a provisioning profile lists for `device`, which may be devicectl's own identifier (they
+    differ), its name or the UDID itself. Empty if devicectl doesn't know it."""
+    out = Path(os.environ.get('TMPDIR', '/tmp')) / f'wiicompiled-devices-{os.getpid()}.json'
+    run(['xcrun', 'devicectl', 'list', 'devices', '--json-output', out])
+    try:
+        entries = json.loads(out.read_text())['result']['devices']
+    except (OSError, ValueError, KeyError):
+        entries = []
+    finally:
+        out.unlink(missing_ok=True)
+    for entry in entries:
+        hardware = entry.get('hardwareProperties', {})
+        names = {entry.get('identifier'), hardware.get('udid'), entry.get('deviceProperties', {}).get('name')}
+        if device in names:
+            return hardware.get('udid', '')
+    return ''
+
+
+def parallelism() -> tuple:
+    """All cores for the build; the translated shards, the memory-hungry compiles, capped at half the
+    RAM in GiB (as build-tvos.command did)."""
+    cpu = os.cpu_count() or 4
+    mem_gib = int(run(['sysctl', '-n', 'hw.memsize']).stdout.strip() or 0) // (1 << 30)
+    return cpu, max(1, min(cpu, mem_gib // 2))
+
+
+def cmd_build(ctx: Context) -> int:
+    ctx.signing()
+    prepare(ctx)
+    env = tool_env()
+    stamp = source_version()
+    build_dir = ctx.work / 'build-tvos'
+    jobs, translated_jobs = parallelism()
+
+    stage('configure', 'Setting up the build')
+    cmake = need('cmake', TOOL_FIXES['cmake'])
+    configure = [cmake, '-S', ROOT / 'runtime', '-B', build_dir, '-G', 'Ninja',
+                 f"-DCMAKE_MAKE_PROGRAM={need('ninja', TOOL_FIXES['ninja'])}", '-DCMAKE_BUILD_TYPE=Release',
+                 '-DCMAKE_SYSTEM_NAME=tvOS', '-DCMAKE_OSX_SYSROOT=appletvos', '-DCMAKE_OSX_ARCHITECTURES=arm64',
+                 '-DMKW_BUILD_PRODUCTS=ON', f'-DMKW_TRANSLATED_COMPILE_JOBS={translated_jobs}',
+                 f"-DMKW_SETUP_VERSION={stamp['version']}"]
+    lines: List[str] = []
+    if stream(configure, cwd=ROOT, on_line=lines.append, env=env) != 0:
+        raise explain(lines, ctx, 'configure-failed', "Couldn't set up the build.")
+
+    stage('compile', 'Compiling the game')
+    lines = []
+
+    def on_line(line: str) -> None:
+        lines.append(line)
+        if len(lines) > 4000:
+            del lines[:2000]
+        progress = re.match(r'\[(\d+)/(\d+)\]', line)
+        if progress and int(progress.group(1)) % 20 == 0:
+            emit('progress', fraction=round(min(int(progress.group(1)) / max(int(progress.group(2)), 1), 0.99), 3))
+
+    if stream([cmake, '--build', build_dir, '--target', TARGET, '--parallel', jobs], cwd=ROOT,
+              on_line=on_line, env=env) != 0:
+        raise explain(lines, ctx)
+
+    stage('package', 'Packaging and signing the app')
+    lines = []
+    package = [sys.executable, '-I', LAUNCHER / 'tvos' / 'package_app.py', '--app', build_dir / f'{TARGET}.app',
+               '--out', ctx.work / 'package', '--team', ctx.team, '--bundle-id', ctx.bundle_id,
+               '--data', ctx.data, '--assets', ASSETS, '--version', stamp['version'], '--commit', stamp['commit']]
+    if ctx.device:
+        udid = hardware_udid(ctx.device)
+        package += ['--device', udid or ctx.device]
+    if stream(package, cwd=ROOT, on_line=lines.append, env=env) != 0:
+        raise explain(lines, ctx, 'package-failed', "Couldn't package and sign the app.")
+    app = ctx.work / 'package' / f'{TARGET}.app'
+    if not (app / 'embedded.mobileprovision').is_file():
+        raise Failure('not-signed', "The build finished, but the app isn't signed for a device.",
+                      'Check the team in Xcode > Settings > Accounts.')
+
+    profile = profile_of(app)
+    expires = profile.get('ExpirationDate')
+    devices = profile.get('ProvisionedDevices') or []
+    udid = hardware_udid(ctx.device) if ctx.device and devices else ''
+    if udid and udid not in devices:
+        emit('warning', code='device-not-in-profile',
+             message=f'The {DEVICE} {ctx.device} is not in the app\'s profile, so it will refuse the install.',
+             fix="Pair it in Xcode's Devices window with it awake, then build again.")
+    size = sum(f.stat().st_size for f in app.rglob('*') if f.is_file())
+    result = {'app': str(app), 'bundleId': ctx.bundle_id, 'team': ctx.team, 'sizeBytes': size, **stamp,
+              'expires': expires.replace(tzinfo=datetime.timezone.utc).isoformat() if expires else None,
+              'devices': devices}
+    (ctx.work / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
+    emit('result', **result)
+    return 0
+
+
+def cmd_prepare(ctx: Context) -> int:
+    prepare(ctx)
+    return 0
+
+
+def built(ctx: Context) -> dict:
+    try:
+        return json.loads((ctx.work / 'result.json').read_text())
+    except (OSError, ValueError):
+        raise Failure('not-built', 'The app has not been built yet.', 'Run: tools/tvos/port build')
+
+
+def cmd_install(ctx: Context) -> int:
+    if not ctx.device:
+        raise Failure('device-missing', f'No {DEVICE} given.', 'Pass --device (xcrun devicectl list devices).')
+    result = built(ctx)
+    stage('install', f'Installing on the {DEVICE} ({APP_SIZE}, several minutes)')
+    lines: List[str] = []
+    if stream(['xcrun', 'devicectl', 'device', 'install', 'app', '--device', ctx.device, result['app']],
+              on_line=lines.append) != 0:
+        raise Failure('install-failed', f"The {DEVICE} didn't take the app.",
+                      "Wake it up, check it's paired in Xcode's Devices window, and try again.")
+    emit('installed', present=True, bundleId=result['bundleId'], version=result['version'],
+         commit=result['commit'], expires=result.get('expires'))
+    return 0
+
+
+def cmd_installed(ctx: Context) -> int:
+    """Emits 'installed' with what's on --device: present, version, build."""
+    if not ctx.device:
+        raise Failure('device-missing', f'No {DEVICE} given.', 'Pass --device (xcrun devicectl list devices).')
+    try:
+        bundle = json.loads((ctx.work / 'result.json').read_text())['bundleId']
+    except (OSError, ValueError, KeyError):
+        ctx.signing()
+        bundle = ctx.bundle_id
+    out = ctx.work / f'apps-{os.getpid()}.json'
+    listed = run(['xcrun', 'devicectl', 'device', 'info', 'apps', '--device', ctx.device,
+                  '--bundle-id', bundle, '--json-output', out])
+    try:
+        apps = json.loads(out.read_text())['result']['apps']
+    except (OSError, ValueError, KeyError):
+        raise Failure('device-unreachable', f"Couldn't ask the {DEVICE} what's installed.",
+                      "Wake it up and check it's paired in Xcode's Devices window." + (
+                          f" ({listed.stderr.strip().splitlines()[-1]})" if listed.stderr.strip() else ''))
+    finally:
+        out.unlink(missing_ok=True)
+    found = next((a for a in apps if a.get('bundleIdentifier') == bundle), None)
+    if found:
+        emit('installed', present=True, bundleId=bundle, version=found.get('version'),
+             build=found.get('bundleVersion'))
+    else:
+        emit('installed', present=False, bundleId=bundle)
+    return 0
+
+
+def cmd_clean(ctx: Context) -> int:
+    # Only what this script makes: --work-dir may be a folder that holds other things. Assets/ and
+    # generated/ go only when prepare made them (prepared.json), since a developer may have made them by hand.
+    if (ctx.work / 'prepared.json').is_file():
+        for folder in (ASSETS, GENERATED, ROOT / 'build' / 'base'):
+            shutil.rmtree(folder, ignore_errors=True)
+    for name in ('build-tvos', 'package'):
+        shutil.rmtree(ctx.work / name, ignore_errors=True)
+    for name in ('prepared.json', 'result.json'):
+        (ctx.work / name).unlink(missing_ok=True)
+    emit('note', message=f'Removed the build from {ctx.work} and the prepared disc.')
+    return 0
+
+
+def main() -> int:
+    global JSON
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument('command', choices=('check', 'prepare', 'build', 'install', 'installed', 'clean'))
+    parser.add_argument('--context')
+    parser.add_argument('--disc')
+    parser.add_argument('--team')
+    parser.add_argument('--bundle-id')
+    parser.add_argument('--device')
+    parser.add_argument('--platform', choices=('tvos',))
+    parser.add_argument('--data', choices=('bundle', 'caches'))
+    parser.add_argument('--work-dir')
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args()
+    JSON = args.json
+    try:
+        ctx = Context(args)
+        ctx.work.mkdir(parents=True, exist_ok=True)
+        if args.command == 'check':
+            return cmd_check(ctx)
+        if args.command == 'prepare':
+            return cmd_prepare(ctx)
+        if args.command == 'build':
+            return cmd_build(ctx)
+        if args.command == 'install':
+            return cmd_install(ctx)
+        if args.command == 'installed':
+            return cmd_installed(ctx)
+        return cmd_clean(ctx)
+    except Failure as failure:
+        emit('error', code=failure.code, message=failure.message, fix=failure.fix)
+        return 1
+    except KeyboardInterrupt:
+        emit('error', code='cancelled', message='Cancelled.')
+        return 130
+
+
+if __name__ == '__main__':
+    sys.exit(main())
