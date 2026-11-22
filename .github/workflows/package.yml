@@ -24,13 +24,17 @@ concurrency:
   group: package-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Upstream's packaging. The tvOS fork (chocoguy/Wiicompiled-tv) releases its installer with
+# tools/release.sh instead, so every job here is skipped outside the upstream repository.
 jobs:
   recompilation:
     name: Recompilation test
+    if: github.repository == 'patchzyy/Wiicompiled'
     uses: ./.github/workflows/recomp-test.yml
 
   linux-appimage:
     name: Linux (AppImage, ${{ matrix.arch }})
+    if: github.repository == 'patchzyy/Wiicompiled'
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +79,7 @@ jobs:
 
   windows-installer:
     name: Windows (installer exe)
+    if: github.repository == 'patchzyy/Wiicompiled'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,6 +104,7 @@ jobs:
 
   macos-setup-package:
     name: macOS (universal Setup.pkg)
+    if: github.repository == 'patchzyy/Wiicompiled'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v7
@@ -229,7 +235,7 @@ jobs:
   # produced by setup hosts that report that same version.
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.repository == 'patchzyy/Wiicompiled' && startsWith(github.ref, 'refs/tags/v')
     needs: [linux-appimage, windows-installer, macos-setup-package, recompilation]
     runs-on: ubuntu-latest
     permissions:
