@@ -1,0 +1,24 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "installer-xcode",
+      "displayName": "WiiCompiled Installer (Xcode, ad hoc signed)",
+      "generator": "Xcode",
+      "binaryDir": "${sourceDir}/../../build/installer-xcode"
+    },
+    {
+      "name": "installer-ninja",
+      "displayName": "WiiCompiled Installer logic tests (Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../../build/installer-ninja",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "installer", "configurePreset": "installer-xcode", "configuration": "Debug", "targets": ["WiiCompiledInstaller"] },
+    { "name": "installer-release", "configurePreset": "installer-xcode", "configuration": "Release", "targets": ["WiiCompiledInstaller"] },
+    { "name": "installertest", "configurePreset": "installer-ninja", "targets": ["wiicompiled_installertest"] }
+  ]
+}
