@@ -29,7 +29,12 @@
 		<string>arm64</string>
 	</array>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIImageName</key>
+		<string>SplashScreenLogo</string>
+		<key>UIColorName</key>
+		<string>SplashScreenBackground</string>
+	</dict>
 	<!-- The tvOS 27 SDK stops an app that has no scene lifecycle. SDL 3.4's UIKit backend
 	     provides it; this names its scene delegate (SDL_uikitappdelegate.m). -->
 	<key>UIApplicationSceneManifest</key>

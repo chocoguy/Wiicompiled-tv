@@ -3,12 +3,16 @@
 
     package_app.py --app build-tvos/WiiCompiled.app --out build-tvos/package --team TEAMID
                    [--device UDID] [--bundle-id ID] [--data bundle|caches] [--assets Assets]
+                   [--version 1.0.0[-rc1]] [--commit abc1234]
 
 The CMake build already put the executable and the runtime's assets (dsp_coef.bin, wii_bootstrap,
 initial_pipeline_cache.db, cacert.pem) in the bundle root. This copies the bundle and then:
   - writes Info.plist from Launcher/tvos/Info.plist (bundle ID, versions, SDK keys);
-  - builds the layered Apple TV icon and Top Shelf images from runtime/resources/WiiCompiled.icns
-    (tv_icon.swift, then actool) and merges actool's icon keys into Info.plist;
+  - stamps the version: CFBundleShortVersionString is the numeric part of --version (default:
+    port.json's), CFBundleVersion is major*10000 + minor*100 + patch, and WiiCompiledVersion /
+    WiiCompiledCommit carry the full version and the commit for `tools/tvos/port installed`;
+  - compiles Launcher/tvos/Assets.xcassets (the layered app icon, Top Shelf images and the launch
+    screen's logo and colour) with actool and merges actool's icon keys into Info.plist;
   - with --data bundle (the default), clones Assets/DATA into the bundle, which tvOS never purges;
     with --data caches, leaves it out for build-tvos.command to push into Library/Caches once;
   - signs it with a profile that covers the bundle ID (its own App ID or a wildcard), first having
@@ -18,6 +22,7 @@ initial_pipeline_cache.db, cacert.pem) in the bundle root. This copies the bundl
 Prints the packaged app's path on its last line.
 """
 import argparse
+import json
 import os
 import plistlib
 import re
@@ -61,24 +66,36 @@ def minimum_os(executable):
     return match.group(1) if match else "26.0"
 
 
-def app_version():
-    props = REPO / "Launcher" / "Directory.Build.props"
-    if props.exists():
-        match = re.search(r"<Version>([^<]+)</Version>", props.read_text())
-        if match:
-            return re.sub(r"[^0-9.].*$", "", match.group(1)) or "0.1.0"
-    return "0.1.0"
+def default_version():
+    try:
+        with open(REPO / "port.json") as f:
+            return json.load(f)["version"]
+    except (OSError, ValueError, KeyError):
+        return "0.0.1"
 
 
-def write_info_plist(app, bundle_id, work):
+def default_commit():
+    result = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def numeric_version(version):
+    match = re.match(r"v?(\d+)\.(\d+)\.(\d+)", version)
+    if not match:
+        fail(f"--version {version!r} is not major.minor.patch")
+    return tuple(int(part) for part in match.groups())
+
+
+def write_info_plist(app, bundle_id, version, commit, work):
     with open(HERE / "Info.plist", "rb") as f:
         info = plistlib.load(f)
-    version = app_version()
+    major, minor, patch = numeric_version(version)
     info.update({
         "CFBundleIdentifier": bundle_id,
-        "CFBundleShortVersionString": version,
-        # Monotonic, so a reinstall always counts as an update.
-        "CFBundleVersion": run(["date", "+%Y%m%d.%H%M%S"]).strip(),
+        "CFBundleShortVersionString": f"{major}.{minor}.{patch}",
+        "CFBundleVersion": str(major * 10000 + minor * 100 + patch),
+        "WiiCompiledVersion": version.lstrip("v"),
+        "WiiCompiledCommit": commit,
         "MinimumOSVersion": minimum_os(app / info["CFBundleExecutable"]),
         "DTPlatformName": "appletvos",
         "DTPlatformVersion": sdk_value("--show-sdk-version"),
@@ -92,11 +109,7 @@ def write_info_plist(app, bundle_id, work):
 
 
 def build_icon(app, min_os, work):
-    source = REPO / "runtime" / "resources" / "WiiCompiled.icns"
-    png = work / "icon.png"
-    run(["sips", "-s", "format", "png", str(source), "--out", str(png)])
-    catalog = work / "Assets.xcassets"
-    run(["xcrun", "swift", str(HERE / "tv_icon.swift"), str(png), str(catalog)])
+    catalog = HERE / "Assets.xcassets"
     partial = work / "icon-info.plist"
     run(["xcrun", "actool", str(catalog), "--compile", str(app), "--platform", "appletvos",
          "--minimum-deployment-target", min_os, "--target-device", "tv", "--app-icon", "AppIcon",
@@ -135,6 +148,8 @@ def main():
     parser.add_argument("--bundle-id", default=None, help="default: org.wiicompiled.WiiCompiled.<team>")
     parser.add_argument("--data", choices=("bundle", "caches"), default="bundle")
     parser.add_argument("--assets", default=str(REPO / "Assets"))
+    parser.add_argument("--version", default=None, help="default: port.json's version")
+    parser.add_argument("--commit", default=None, help="default: git rev-parse --short HEAD")
     args = parser.parse_args()
     source = Path(args.app).resolve()
     if not (source / "WiiCompiled").is_file():
@@ -156,7 +171,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="mkw-tvpackage-") as tmp:
         # Resolved: /var is a symlink to /private/var, which breaks xcodegen's relative paths.
         work = Path(tmp).resolve()
-        write_info_plist(app, bundle_id, work)
+        write_info_plist(app, bundle_id, args.version or default_version(), args.commit or default_commit(), work)
         if args.data == "bundle":
             data = Path(args.assets) / "DATA"
             if not (data / "sys" / "fst.bin").is_file():

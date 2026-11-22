@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "id": "wiicompiled-tv",
+  "name": "WiiCompiled",
+  "game": "Mario Kart Wii (Wii; PAL, NTSC-U or NTSC-J)",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+
+  "entry": "tools/tvos/port",
+  "commands": ["check", "prepare", "build", "install", "installed", "clean"],
+
+  "requirements": {
+    "macOS": "27.0",
+    "arch": "arm64",
+    "xcode": "27.0",
+    "platforms": ["tvOS"],
+    "tools": ["cmake", "ninja", "dotnet", "nodtool", "xcodegen"],
+    "submodules": true,
+    "network": "build downloads the pinned third-party libraries (Dawn, SDL3 and others) once",
+    "diskGB": 12,
+    "firstBuildMinutes": 30
+  },
+
+  "account": {
+    "minimum": "free",
+    "freeExpiryDays": 7,
+    "capabilities": [],
+    "bundleId": "org.wiicompiled.WiiCompiled.{team}"
+  },
+
+  "devices": {
+    "family": "appletv",
+    "minModel": "AppleTV14,1",
+    "minOS": "27.0"
+  },
+
+  "inputs": [
+    {
+      "id": "disc",
+      "label": "Mario Kart Wii disc",
+      "help": "A disc image you made from your own copy of Mario Kart Wii (PAL, NTSC-U or NTSC-J).",
+      "kind": "file",
+      "extensions": ["iso", "wbfs", "ciso", "rvz", "wia", "gcz"],
+      "required": true,
+      "accept": [
+        { "name": "PAL", "gameId": "RMCP01" },
+        { "name": "NTSC-U", "gameId": "RMCE01" },
+        { "name": "NTSC-J", "gameId": "RMCJ01" }
+      ],
+      "verifiedBy": "prepare"
+    }
+  ],
+
+  "stages": [
+    { "id": "disc", "label": "Reading your disc", "command": "prepare" },
+    { "id": "extract", "label": "Extracting the game", "command": "prepare" },
+    { "id": "translate", "label": "Translating the game", "command": "prepare" },
+    { "id": "configure", "label": "Setting up the build", "command": "build" },
+    { "id": "compile", "label": "Compiling the game", "command": "build" },
+    { "id": "package", "label": "Packaging and signing the app", "command": "build" },
+    { "id": "install", "label": "Installing on the Apple TV", "command": "install" }
+  ],
+
+  "artifact": {
+    "app": "WiiCompiled.app",
+    "sizeGB": 3
+  },
+
+  "saves": {
+    "strategy": "local",
+    "note": "Saves stay on the Apple TV: in the app's caches, with a copy in its settings that brings them back if tvOS clears the caches. Deleting the app deletes them."
+  },
+
+  "logs": {
+    "process": "WiiCompiled",
+    "files": ["Library/Caches/WiiCompiled/Logs"],
+    "console": true
+  }
+}

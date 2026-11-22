@@ -113,9 +113,9 @@ Source: <https://github.com/higan-emu/libco>. Full license text:
 ### TVPort / nxnative - MIT
 
 Copyright (c) 2026 seedds (nxnative); TVPort's additions are under the same license.
-`Launcher/tvos/tv_icon.swift` (the Apple TV layered icon and Top Shelf images) is copied unchanged
-from TVPort's `dm/ios/tools/tv_icon.swift`. The tvOS port also follows designs from TVPort without
-copying its code: the on-device probe, signing and `devicectl` install flow, and the save
+Earlier builds copied TVPort's `dm/ios/tools/tv_icon.swift` unchanged to make the Apple TV icon; the
+port now uses its own asset catalog (`Launcher/tvos/Assets.xcassets`). The tvOS port also follows
+designs from TVPort without copying its code: the on-device probe, signing and `devicectl` install flow, and the save
 persistence planned for M5 (docs/tvos-porting-plan.md).
 Source: <https://github.com/68hctmzzjf-svg/TVPort> (a fork of <https://github.com/seedds/nxnative>).
 
