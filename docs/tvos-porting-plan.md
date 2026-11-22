@@ -9,7 +9,7 @@ WiiCompiled is a static recompilation of Mario Kart Wii. The translator (.NET) t
 - The base game ships first. Retro Rewind and online come later.
 - Signing uses a **paid** developer account.
 
-The TVPort fork of nxnative (`/Users/chocoguy/Documents/Code/TVPort`, MIT) already solved several tvOS limits on the same hardware. This plan reuses those solutions wherever they apply. The Mac stays the build machine: translation and compilation run there, cross-compiled to `arm64-apple-tvos`, as TVPort does.
+The TVPort fork of nxnative (MIT) already solved several tvOS limits on the same hardware. This plan reuses those solutions wherever they apply. The Mac stays the build machine: translation and compilation run there, cross-compiled to `arm64-apple-tvos`, as TVPort does.
 
 ### What the scan found
 
@@ -164,7 +164,7 @@ What `package_app.py` does:
 - writes `Info.plist` from `Launcher/tvos/Info.plist`, including SDL's `SDLUIKitSceneDelegate` scene manifest and the game controller keys;
 - builds the layered icon and Top Shelf images from `WiiCompiled.icns` (TVPort's `tv_icon.swift`, then `actool`);
 - clones `Assets/DATA` into the bundle;
-- signs with an explicit-App-ID profile that grants extended virtual addressing. On first use it makes Xcode create that profile through `Launcher/tvos/provision`.
+- signs with a profile that covers the bundle ID. On first use it makes Xcode create one through `Launcher/tvos/provision`. Builds before M6 also needed the extended-virtual-addressing entitlement; see M6.
 
 Pieces that made it work:
 - **Entry point:** on tvOS, `main` lives in `src/platform/tvos/tvos_main.cpp` (outside the unity build) and includes `SDL_main.h`, so SDL 3.4.10 owns `UIApplicationMain` and the scene lifecycle. No custom SceneDelegate was needed.
@@ -187,7 +187,7 @@ Planned work:
   - links with `-Wl,-stack_size,0x800000` (from M2), because the guest's boot thread runs on the main thread;
   - tvOS 26.0, `TARGETED_DEVICE_FAMILY=3`, automatic signing with the paid team;
   - Info.plist keys for game controllers and the scene manifest;
-  - the `com.apple.developer.kernel.extended-virtual-addressing` entitlement and an explicit AVKit link (both from M0);
+  - an explicit AVKit link (from M0). The `com.apple.developer.kernel.extended-virtual-addressing` entitlement was used until M6, which removed it;
   - resources: bootstrap, DSP ROM, pipeline DB, CA bundle;
   - icon and Top Shelf from `runtime/resources/WiiCompiled.icns` (converted with `sips`), run through TVPort's `tv_icon.swift`.
 - Game data: by default, bundle the extracted DVD root (`files/` + `sys/`) inside the .app. It's read-only, and tvOS never purges it. A dev flag instead pushes it once into `Library/Caches` via `devicectl` with an identity check, which makes reinstalls fast. That's TVPort's `DM_COPY_ROMFS=NO` and `stage_resources.sh` pattern.
@@ -199,6 +199,31 @@ Planned work:
 - **Exit:** the app installs from the Mac, aurora comes up on Metal, and the strap and title screens render on the TV.
 
 ### M4: Input, UI and lifecycle (playable)
+**In progress 2026-11-08.** Code done, and the background/resume cycle was verified on the TV. Controller play, the Back button and the controller-driven overlay still need a hands-on test with a controller.
+
+- **Background and resume, verified on the TV:**
+  - SDL 3.4 sends `SDL_EVENT_WINDOW_MINIMIZED` when the app leaves the screen, and aurora then blocks the game loop in `SDL_WaitEvent`, so the guest stops by itself.
+  - Opening another app and coming back resumed the title sequence: aurora recreated the surface, and audio dropped a few stale blocks.
+  - tvOS can still end a backgrounded app when the foreground app needs memory (about 1 GB here). Saving progress against that is M5.
+- **Back button:** SDL's tvOS view controller is a `GCEventViewController`, and controller UI events stay off by default (`SDL_HINT_APPLE_TV_CONTROLLER_UI_EVENTS`). SDL's view also swallows remote presses, so neither a controller's B nor the Siri Remote's Back should leave the game. Still to confirm by hand.
+- **Siri Remote:** SDL maps the touch surface to the left stick, the click to A, Play/Pause to X and Back to B.
+- **Settings overlay on tvOS** (`settings_overlay.cpp`, `MKW_OVERLAY_TVOS`):
+  - a controller's Back/View button opens and closes it (the game never uses that button);
+  - ImGui gamepad navigation is on only while it's open, with focus on the menu bar;
+  - Escape/Back never opens a quit prompt, and there's no quit item;
+  - Wii Remote pairing and the display-mode setting are hidden;
+  - the hints name the controller button instead of F10.
+  - With only a Siri Remote there is no way to open it yet.
+- **Display:** `TvosPlatform::RequestDisplayRefreshRate` (`src/platform/tvos/tvos_platform.mm`) asks the TV for 60 Hz through `AVDisplayManager`. The TV only switches when Match Frame Rate is on; on this TV it is off, and the log says so.
+- **Music ducking:** on tvOS it polls `AVAudioSession.secondaryAudioShouldBeSilencedHint`.
+- **Build:** tvOS enables OBJC and OBJCXX before aurora and SDL are added, since enabling them later breaks SDL's `.m` flags. Products link AVKit explicitly.
+- **Left for later:**
+  - friend-code text entry (needed for online play, M7);
+  - opening the overlay from the Siri Remote;
+  - checking controller rumble and motion (SDL's GameController haptics and sensors) by hand.
+- **Watch for M6:** memory went from 927 to 997 MiB over one background/resume cycle.
+
+Planned work:
 - **Controllers:** use SDL3's GameController-backed gamepads (Xbox, DualSense, Switch Pro, MFi) with the existing GC-pad bindings.
 - **Back button:**
   - set `SDL_HINT_APPLE_TV_CONTROLLER_UI_EVENTS=0` next to `Wiimote::ConfigureSdlHints` (`main.cpp:1469`);
@@ -223,6 +248,27 @@ Planned work:
 - **Exit:** finish a Grand Prix with a controller, Back stays in the game, and Home → resume works.
 
 ### M5: Persistence (saves and settings survive purges and reinstalls)
+**Done 2026-11-08** (local persistence; the iCloud and per-profile extras below are still open). Saves and settings survive tvOS purging `Library/Caches`. Verified on the Apple TV with a real save from a finished race.
+
+- **How it works** (`src/platform/tvos/tvos_persistence.mm`, the same approach as TVPort's `TVSaves.m`):
+  - Every user-data file is kept as an LZFSE-packed copy in `NSUserDefaults`. `DATA/`, `Cache/` and `Logs/` are skipped because they can be regenerated.
+  - Files that would push past a 900 KB budget go to `Library/Preferences/WiiCompiled-persist/` instead, because `NSUserDefaults` aborts the app near 1 MB.
+  - At launch, before anything reads user data, any file missing from the cache is written back. A file still present is never overwritten.
+  - Files that have no copy yet (saves from older builds, bootstrap files) are kept at launch.
+- **When copies are made:**
+  - after the NAND layer has flushed, closed and (for `NANDSafeOpen`) atomically committed a file, through `NandPersistence::FileWritten` in `nand_async.cpp` (`CommitAndCloseFd`) and `nand_fs.cpp` (`CloseFd`). A copy can therefore never catch a half-written save. The file is read at once and packed on a background queue;
+  - `Config.toml`, `imgui.ini`, `gamecontrollerdb.txt` and the NAND marker are checked every 30 s;
+  - everything is flushed on `SDL_EVENT_WILL_ENTER_BACKGROUND` and `SDL_EVENT_TERMINATING`.
+- **Sizes:** a NAND with one finished race is 3.1 MB and packs to about 20 KB in all; `rksys.dat` goes from 2.8 MB to 2 KB.
+- **Verified:**
+  - `mkw_tvos_persistence_tests` runs on the Apple TV through `ctest` (10 checks): purge, restore byte for byte, spilling, ignored paths, and that newer files are never overwritten.
+  - End to end on the TV: the first launch kept 20 files, including the existing `rksys.dat`. A launch with `MKW_TVOS_SIMULATE_CACHE_PURGE=1` (a development aid that wipes the user data first, since `devicectl` cannot delete container files) restored all 20. The runtime loaded the restored `Config.toml`, and `rksys.dat` hashed identically before and after.
+  - Opening another app logged the flush before the game stopped presenting.
+- **Limits:**
+  - Deleting the app deletes these copies too. Mac-side backups (TVPort's `devicectl` backup loop) or iCloud are the answer to that.
+  - A NAND file the game deletes can come back after a purge. Mario Kart Wii doesn't delete its save, but deletes aren't tracked.
+
+Planned work:
 - Port `TVSaves.m` into the runtime. It persists:
   - the NAND save data (`rksys.dat` under `NAND/`, see `nand_path.h:58`);
   - `Config.toml`;
@@ -235,7 +281,75 @@ Planned work:
 - **Optional:** Mac-side backups through `devicectl` (TVPort's automatic backup loop).
 - **Exit:** wiping `Library/Caches` or reinstalling keeps licenses, ghosts and settings.
 
-### M6: Performance, textures and thermals on the A15
+### M6: Performance, textures and thermals
+**Main slowdown fixed 2026-11-08.** The race intro, countdown and start ran at **31 fps** on the A15. They now hold **60 fps** for the whole race, including more than a minute at thermal state *serious*. The game runs at full speed (race clock = wall clock).
+
+**How it was measured, with no controller:**
+- `Config.toml` `expr_1_buttons_a = "timer(1.2) > 0.5"` pulses A. That clicks through the default menus into a Grand Prix at Luigi Circuit and keeps the kart moving. Remove it afterwards.
+- `MKW_PERF_STATS=1` now logs, per 240 frames: `t=` seconds since launch, the presented fps, frame p95/max, the game thread's busy time, and its blocked time split into *stalled* (waiting on the GX worker, GPU or audio) and *pacing sleep* (60 Hz headroom) (`perf_stats.cpp`, `WaitScope(WaitKind)`).
+- Instruments Time Profiler from the command line:
+
+  ```bash
+  xcrun xctrace record --template 'Time Profiler' --device <UDID> --time-limit 120s --env MKW_PERF_STATS=1 --launch -- <bundle ID>
+  ```
+
+  Then `xctrace export ... table[@schema="time-profile"]`. Attaching to a running app found no process. The same trace has `device-thermal-state-intervals`.
+- The `[tvos] memory` line (every 15 s) now includes the thermal state.
+
+**What was wrong:**
+- **Serialized handoffs.** The game thread stalled about 19 ms a frame waiting on the render chain (game thread → GX worker → aurora FIFO processor → render worker → GPU). No thread was saturated, but about two-thirds of the GX worker's and FIFO processor's CPU went on waking each other:
+  1. **GX worker** (`gx_worker.cpp`): while the game thread waited for a tail position, the worker broadcast `g_tailCv` after every record. That woke the game thread to recheck and contend for the mutex: about 3.1 s in `__psynch_cvbroad` and 1.9 s in contended unlocks per 33 s. **Fix:** the producer stores the tail it waits for (`g_producerWaitTarget`), and the worker notifies only on reaching it.
+  2. **Aurora FIFO processor** (`aurora-main/lib/gx/fifo.cpp`, aurora fork branch `wiicompiled-tvos`): `std::atomic::wait` in libc++ polls for up to 64 µs, reading `steady_clock::now()` in a loop, before it blocks. That was about 5 s of clock reads per 33 s. **Fix:** a 2,048-iteration `yield` spin without clock reads, then a condition variable. `wake_worker` locks and notifies only while the worker sleeps (Dekker pairing on `sWorkerSleeping`).
+  3. `CpuRelax()` was a no-op on ARM. It now emits `yield`.
+- **`GXGetVtxDesc` drained the render queue.** `nw4r::ef::DrawStrategyImpl::SetupGP` (0x8003CB60, particle effects) queries `GXGetVtxDesc` and `GXGetVtxAttrFmt` before every effect draw, and each query drained the whole GX worker queue: about 50% of the game thread's samples. **Fix** (`gx_vertex.cpp`): a game-thread copy of the vertex descriptor and formats.
+  - The setters update the copy before they defer.
+  - `GXCallDisplayList` marks it stale.
+  - A vertex-layout CP load arriving through the gather pipe turns it off for good.
+  - `MKW_GX_VTX_SHADOW_VERIFY=1` checks every answer against the worker's state: 786,432 checks, 0 mismatches through boot, menus and a race.
+
+**Result, same 33 s intro window:**
+
+| Thread | Before (31 fps) | After (60 fps) |
+|---|---|---|
+| Game thread | 13.7 s | 8.2 s |
+| GX worker and audio | 16.8 s | 5.5 s |
+| FIFO processor | 11.4 s | 2.9 s |
+| Render worker | 2.2 s | 2.2 s |
+
+That's about 4.7× less CPU per frame. In the race the game thread is busy 3–5 ms a frame, with 2–12 ms of pacing sleep spare. Memory steady at about 940 MiB.
+
+**Target device change (2026-11-21).** The A15 Apple TV is retired as the target. Testing moves to the Apple TV 4K 4th generation (`AppleTV18,1`, tvOS 27.2.1, 5 cores, SME/SME2, 8 GB RAM, still a 2,097 MB app limit). The M0 probe on it (`Launcher/tvos/probe/results/2026-11-21-AppleTV18,1-tvOS27.2.1-plain.txt`) shows the same address-space layout as the A15: the app's space ends at 454 GiB, and 448 GiB is the only free 4 GiB-aligned slot. The build still uses `-mcpu=apple-a15`, which runs on the newer chip. All 13 runtime tests pass on it.
+
+**MetalFX upscaling on (2026-11-21).** The game renders at 1x (about 940×528) and the TV outputs 4K, so without MetalFX a bilinear filter stretches the image about 4×. MetalFX spatial upscaling is now on by default on tvOS (`settings_overlay.cpp`; `[video] metalfx_spatial_upscaling = false` turns it off). Changes in the aurora fork:
+- `metalfx.mm`: availability checks name tvOS 27.1, the first tvOS with the MetalFX API.
+- `metalfx.mm`, tvOS only: no `waitUntilScheduled` after committing the MetalFX command buffer. It blocked the render thread about 3.2 ms a frame (max 4.4) until the GPU had finished the scene. Whenever frame pacing drifted against the display, that dropped the game to 30 fps for a second or two, about every 18 s. Ordering is still enforced on the GPU: Dawn's next submission waits for the MetalFX shared event before reading the output. macOS keeps the wait.
+- `aurora.cpp`, tvOS only: the upscale is capped at 2× per axis (939×528 → 1877×1056), and the present pass's linear sampler stretches the rest to 4K. Spatial upscaling is designed for up to 2×; going straight to 4K cost about 10 ms of GPU a frame against about 2.2 ms now.
+- `aurora.cpp`: without frame interpolation, two slots instead of four. A slot that already has the right size is reused instead of rebuilt; Mario Kart Wii's menus alternate between 939×528 and 892×456.
+
+Measured on the 4th-gen Apple TV, 4-minute autopilot sessions (`MKW_PERF_STATS`, 60 windows of 240 frames each):
+
+| Setup | Mean fps | Windows < 58 fps | Footprint | MetalFX GPU / frame |
+|---|---|---|---|---|
+| MetalFX off | 59.9 | 0 | 953 MiB | none |
+| MetalFX to 4K (first try) | 57.9 | 13 | 1,131 MiB | ~10 ms |
+| Same, no CPU wait | 58.4 | 12 | 1,138 MiB | ~10 ms |
+| **2× cap (shipped)** | **59.9** | **1** (loading) | **975 MiB** | **2.2 ms** |
+
+**No extended-virtual-addressing entitlement (2026-11-21).** The app signs with no special capabilities, so any profile that covers the bundle ID works, wildcard ones included (`package_app.py`, `WiiCompiled.entitlements`).
+- The entitlement only moved the end of the address space from 454 to 512 GiB. It never gave the guest a different base. Its job was to leave room above the guest, so that big allocations made before the guest was mapped landed somewhere else. The probe shows that after Metal starts, its allocations take the 448 GiB slot.
+- Now a static constructor in `guest_flat_memory_darwin.cpp` (tvOS only) claims the 4 GiB slot before `main`, UIKit, Metal or Dawn run, and `GuestFlat::Initialize` adopts it.
+- The `[tvos] memory` line now reports free address space and its largest gap. `MKW_TVOS_VM_DUMP=1` adds the largest regions and the space per memory tag every minute.
+- Free address space in play: about 2.8–2.9 GB normally. After the shader cache is lost (a fresh install or a cache purge), compiling every pipeline from scratch leaves malloc's small zone holding about 1.4 GB, and free space settles at about 1.6 GB. It doesn't grow after that, and the next launch is back to 2.9 GB.
+
+**Persistence bug found on the way.** `settings_overlay.cpp`'s globals read `Config.toml` during static initialization, before `main` restored the kept copies. After a real cache purge, `EnsureConfigFile` would have written a default `Config.toml`, and the restore would then have skipped the kept one. Now `RuntimeConfigFile::LoadConfigFile` calls `TvosPersistence::RestoreMissingFilesOnce()` first (`MKW_TVOS_PERSISTENCE`, defined for the app's runtime and product targets on tvOS). `MKW_TVOS_SIMULATE_CACHE_PURGE` moved there too, so the simulation now follows the same order as a real purge. On the device, 21 files came back before the config was first read.
+
+**Not done yet:**
+- These changes also run on macOS, Windows and Linux. macOS builds and passes its tests, but the game hasn't been played there with them. The MetalFX slot reuse is shared code; the 2× cap and the dropped wait are tvOS only.
+- A thermal fallback (lower the resolution at *serious*) isn't needed at 1x; revisit for higher internal resolutions. The 4th-gen TV reported *serious* and *critical* after about 30 minutes of back-to-back test runs and still held 60 fps.
+- Tune `-mcpu` for the 4th-gen chip, if the A15 baseline measurably costs anything.
+- Why memory is about 950 MiB.
+
+Planned work:
 - Profile GPU frame time at 1×, 2×, 3× and 4.5× internal resolution. Enable aurora's MetalFX spatial path on tvOS (`settings_overlay.cpp:1243` `metalFxSupported`).
 - Textures: confirm CMPR decodes without BC hardware. If the CPU decode stutters, use TVPort's GPU-kernel BC1 decode (`nvn_bcdec.c`, `nvn_mtl.m` no-BC path) as the reference.
 - Shader stutter:

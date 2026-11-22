@@ -539,7 +539,21 @@ inline RuntimeUserConfig ParseConfig(std::istream& input, std::string sourceName
     }
 }
 
+#if defined(MKW_TVOS_PERSISTENCE)
+} // namespace RuntimeConfigFile
+namespace TvosPersistence {
+int RestoreMissingFilesOnce() noexcept;   // src/platform/tvos/tvos_persistence.mm
+}
+namespace RuntimeConfigFile {
+#endif
+
 inline RuntimeUserConfig LoadConfigFile() {
+#if defined(MKW_TVOS_PERSISTENCE)
+    // The first read happens during static initialization (settings_overlay.cpp's globals), before
+    // main(). After tvOS purged Library/Caches, EnsureConfigFile would otherwise write a default
+    // Config.toml that the restore then leaves alone.
+    TvosPersistence::RestoreMissingFilesOnce();
+#endif
     EnsureConfigFile();
     std::ifstream file(ResolveConfigPath(), std::ios::binary);
     return file ? ParseConfig(file, PathToUtf8(ResolveConfigPath())) : RuntimeUserConfig{};

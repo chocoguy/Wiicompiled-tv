@@ -22,9 +22,9 @@ inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'1000'0000'0000ull;
 // extended-virtual-addressing entitlement), the shared cache covers 6-63 GiB
 // and a GPU carveout guard 63-448 GiB, which leaves this the only 4 GiB-aligned
 // slot (measured on an A15 on tvOS 27.2: docs/tvos-m0-findings.md). The macOS
-// base below is past the end. The runtime maps the guest before Metal or Dawn
-// start (SystemBridge::Initialize precedes aurora_initialize), which keeps the
-// slot free; it still loads with a single movz.
+// base below is past the end. The app does not use the entitlement: a static
+// constructor in guest_flat_memory_darwin.cpp claims the slot before UIKit,
+// Metal or Dawn can place a large allocation there. It loads with a single movz.
 inline constexpr uintptr_t kFixedFlatGuestBase = 0x0000'0070'0000'0000ull;
 #elif defined(__aarch64__) && defined(__APPLE__)
 // Keep this well above the low address ranges that Darwin's ASLR may use for

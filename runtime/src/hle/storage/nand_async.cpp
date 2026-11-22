@@ -3,6 +3,7 @@
 //
 // Shared state and helpers live in nand_internal.h.
 
+#include "nand_persistence.h"
 #include "nand_internal.h"
 
 // Guest callback dispatch: host NAND work completes synchronously, so an "async" call just
@@ -365,6 +366,9 @@ int32_t CommitAndCloseFd(const char* who, int32_t fd, bool missingFdIsError) {
             LogNandError(who, "ERROR: flush of '%s' failed", HostPathText(tempPath).c_str());
             return NAND_RESULT_UNKNOWN;
         }
+        if (writable) {
+            NandPersistence::FileWritten(tempPath);
+        }
         return NAND_RESULT_OK;
     }
 
@@ -380,6 +384,7 @@ int32_t CommitAndCloseFd(const char* who, int32_t fd, bool missingFdIsError) {
         return NAND_RESULT_UNKNOWN;
     }
 
+    NandPersistence::FileWritten(commitPath);
     return NAND_RESULT_OK;
 }
 

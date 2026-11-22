@@ -55,6 +55,10 @@ std::atomic<uint64_t> g_head{0};
 std::atomic<uint64_t> g_tail{0};
 std::atomic<bool> g_consumerWaiting{false};
 std::atomic<bool> g_producerWaiting{false};
+// The tail position the waiting producer needs. The worker notifies once it gets there instead of
+// after every record: per-record broadcasts woke the game thread to recheck and contend for
+// g_tailMutex thousands of times a frame, which cost the A15 a third of the worker's CPU.
+std::atomic<uint64_t> g_producerWaitTarget{0};
 std::mutex g_headMutex;
 std::condition_variable g_headCv;
 std::mutex g_tailMutex;
@@ -71,6 +75,8 @@ constexpr size_t AlignUp(size_t value) { return (value + detail::kAlign - 1) & ~
 inline void CpuRelax() {
 #if defined(__x86_64__) || defined(_M_X64)
     _mm_pause();
+#elif defined(__aarch64__)
+    __asm__ __volatile__("yield");   // spin-wait hint; without it the loops below spin flat out on ARM
 #endif
 }
 
@@ -117,6 +123,7 @@ void WaitForTail(uint64_t minTail, bool service) {
         {
             PerfStats::WaitScope wait;
             std::unique_lock lock{g_tailMutex};
+            g_producerWaitTarget.store(minTail, std::memory_order_relaxed);
             g_producerWaiting.store(true, std::memory_order_seq_cst);
             if (g_tail.load(std::memory_order_seq_cst) < minTail) {
                 WaitTailBriefly(lock);
@@ -234,7 +241,10 @@ void WorkerMain() {
             }
             tail += header->size;
             g_tail.store(tail, std::memory_order_seq_cst);
-            if (g_producerWaiting.load(std::memory_order_seq_cst)) {
+            // The target is stored before the seq_cst store of g_producerWaiting, so seeing the flag
+            // set means seeing the target too. The producer's wait is also bounded (1 ms).
+            if (g_producerWaiting.load(std::memory_order_seq_cst) &&
+                tail >= g_producerWaitTarget.load(std::memory_order_relaxed)) {
                 std::lock_guard lock{g_tailMutex};
                 g_tailCv.notify_all();
             }

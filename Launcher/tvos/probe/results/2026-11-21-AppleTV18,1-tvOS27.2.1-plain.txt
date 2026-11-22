@@ -1,0 +1,200 @@
+[start] WiiCompiled tvOS probe
+[layout:pre-uikit] vm_page_size=16384 vm_kernel_page_size=16384 getpagesize=16384
+[layout:pre-uikit] task min_address=0x104a18000 max_address=0x7180000000 (454.00 GiB) virtual_size=442.02 GiB phys_footprint=1.2 MiB limit_bytes_remaining=2096.8 MiB (task_vm_info count 93)
+[layout:pre-uikit] 46 top-level regions, lowest 0x104a18000, highest end 0x7000000000 (448.00 GiB)
+[layout:pre-uikit]   0x00104a18000-0x00104a78000       0.4 MiB tag=0 (5 regions)
+[layout:pre-uikit]   0x00104a78000-0x00104a80000       0.0 MiB tag=73 (1 regions)
+[layout:pre-uikit]   0x00104a80000-0x00104bd8000       1.3 MiB tag=0 (3 regions)
+[layout:pre-uikit]   0x00104bd8000-0x00104c88000       0.7 MiB tag=1 (4 regions)
+[layout:pre-uikit]   0x00104c88000-0x00104c90000       0.0 MiB tag=11 (1 regions)
+[layout:pre-uikit]   0x00104cf4000-0x001050cc000       3.8 MiB tag=1 (2 regions)
+[layout:pre-uikit]   0x001050cc000-0x001054cc000       4.0 MiB tag=7 (1 regions)
+[layout:pre-uikit]   0x001054cc000-0x00105550000       0.5 MiB tag=1 (2 regions)
+[layout:pre-uikit]   0x00105800000-0x00105c00000       4.0 MiB tag=2 (1 regions)
+[layout:pre-uikit]   0x0016b2e8000-0x0016b3e8000       1.0 MiB tag=30 (2 regions)
+[layout:pre-uikit]   0x00180000000-0x001f8000000    1920.0 MiB tag=32 submap (1 regions)
+[layout:pre-uikit]   0x001f8000000-0x001f8cb8000      12.7 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x001f8cb8000-0x00200dc8000     129.1 MiB tag=0 (2 regions)
+[layout:pre-uikit]   0x00200dc8000-0x00202e98000      32.8 MiB tag=35 submap (2 regions)
+[layout:pre-uikit]   0x00202e98000-0x00204000000      17.4 MiB tag=35 (1 regions)
+[layout:pre-uikit]   0x00204000000-0x00205f20000      31.1 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x00205f20000-0x00207c80000      29.4 MiB tag=0 (2 regions)
+[layout:pre-uikit]   0x00207c80000-0x00208000000       3.5 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x00208000000-0x00268000000    1536.0 MiB tag=32 submap (1 regions)
+[layout:pre-uikit]   0x00268000000-0x00268c24000      12.1 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x00268c24000-0x0026f0a4000     100.5 MiB tag=0 (2 regions)
+[layout:pre-uikit]   0x0026f0a4000-0x00270000000      15.4 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x00270000000-0x00272000000      32.0 MiB tag=32 submap (1 regions)
+[layout:pre-uikit]   0x00272000000-0x0027393c000      25.2 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x0027393c000-0x00274c54000      19.1 MiB tag=0 (2 regions)
+[layout:pre-uikit]   0x00274c54000-0x00276000000      19.7 MiB tag=35 submap (1 regions)
+[layout:pre-uikit]   0x00276000000-0x00fc0000000   54432.0 MiB tag=32 submap (1 regions)
+[layout:pre-uikit]   0x00fc0000000-0x07000000000  394240.0 MiB tag=31 (2 regions)
+[layout:pre-uikit] 4 GiB slots   0-255 GiB: .##ssssssssssss#################################################
+[layout:pre-uikit] 4 GiB slots 256-511 GiB: ################################################..              
+[layout:pre-uikit] 4 GiB slots 512-767 GiB:                                                                 
+[layout:pre-uikit] 4 GiB slots 768-1023 GiB:                                                                 
+[layout:pre-uikit]   free gap 0x00000000000-0x00104a18000 (4.1 GiB), 4 GiB-aligned slots from 0x0
+[layout:pre-uikit]   free gap 0x07000000000-0x07180000000 (6.0 GiB), 4 GiB-aligned slots from 0x7000000000
+[fixed:pre-uikit] base 0x8000000000 (512 GiB): FAILED ((os/kern) invalid address)
+[fixed:pre-uikit] base 0xc00000000 (48 GiB): FAILED ((os/kern) no space available)
+[fixed:pre-uikit] base 0x800000000 (32 GiB): FAILED ((os/kern) no space available)
+[fixed:pre-uikit] base 0x400000000 (16 GiB): FAILED ((os/kern) no space available)
+[fixed:pre-uikit] base 0x200000000 (8 GiB): FAILED ((os/kern) no space available)
+[fixed:pre-uikit] 4 GiB FIXED reservation ok at GiB: 448
+[fixed:pre-uikit] 4 GiB FIXED reservation failed at GiB: 512,48,32,16,8,4,12,20,24,28,36,40,44,52,56,60,64,128,256,1024,2048,4096,8184
+[system] variant=plain model=AppleTV18,1 os="Version 27.2.1 (Build 24K157)" cores=5 physical_memory=8055 MiB available_memory=2095 MiB thermal=0
+[system] main thread stack 1008 KiB; a default secondary pthread gets 524 KiB
+[cpu] present: FEAT_LSE FEAT_LSE2 FEAT_FP16 FEAT_DotProd FEAT_FHM FEAT_RDM FEAT_JSCVT FEAT_FCMA FEAT_LRCPC FEAT_LRCPC2 FEAT_FRINTTS FEAT_BF16 FEAT_I8MM FEAT_SHA3 FEAT_SHA512 FEAT_PAuth FEAT_BTI FEAT_SME FEAT_SME2 FEAT_CSSC FEAT_HBC FEAT_FPAC FEAT_AFP FEAT_RPRES FEAT_WFxT FEAT_ECV FEAT_SB FEAT_DPB FEAT_DPB2
+[cpu] absent: FEAT_SSBS
+[layout:launch] vm_page_size=16384 vm_kernel_page_size=16384 getpagesize=16384
+[layout:launch] task min_address=0x104a18000 max_address=0x7180000000 (454.00 GiB) virtual_size=442.05 GiB phys_footprint=3.3 MiB limit_bytes_remaining=2094.7 MiB (task_vm_info count 93)
+[layout:launch] 74 top-level regions, lowest 0x104a18000, highest end 0x7000000000 (448.00 GiB)
+[layout:launch]   0x00104a18000-0x00104a78000       0.4 MiB tag=0 (5 regions)
+[layout:launch]   0x00104a78000-0x00104a80000       0.0 MiB tag=73 (1 regions)
+[layout:launch]   0x00104a80000-0x00104b48000       0.8 MiB tag=0 (4 regions)
+[layout:launch]   0x00104b48000-0x00104b4c000       0.0 MiB tag=41 (1 regions)
+[layout:launch]   0x00104b4c000-0x00104b64000       0.1 MiB tag=0 (3 regions)
+[layout:launch]   0x00104b64000-0x00104b6c000       0.0 MiB tag=51 (2 regions)
+[layout:launch]   0x00104b6c000-0x00104bd8000       0.4 MiB tag=0 (1 regions)
+[layout:launch]   0x00104bd8000-0x00104c88000       0.7 MiB tag=1 (4 regions)
+[layout:launch]   0x00104c88000-0x00104c90000       0.0 MiB tag=11 (1 regions)
+[layout:launch]   0x00104c90000-0x00104cd0000       0.2 MiB tag=78 (1 regions)
+[layout:launch]   0x00104cd0000-0x00104ce4000       0.1 MiB tag=0 (2 regions)
+[layout:launch]   0x00104ce4000-0x00104cec000       0.0 MiB tag=1 (1 regions)
+[layout:launch]   0x00104cec000-0x00104cf4000       0.0 MiB tag=0 (1 regions)
+[layout:launch]   0x00104cf4000-0x001050cc000       3.8 MiB tag=1 (2 regions)
+[layout:launch]   0x001050cc000-0x001054cc000       4.0 MiB tag=7 (1 regions)
+[layout:launch]   0x001054cc000-0x00105550000       0.5 MiB tag=1 (2 regions)
+[layout:launch]   0x00105800000-0x00105c00000       4.0 MiB tag=2 (1 regions)
+[layout:launch]   0x00105c00000-0x00107e70000      34.4 MiB tag=0 (1 regions)
+[layout:launch]   0x0016b2e8000-0x0016b7bc000       4.8 MiB tag=30 (16 regions)
+[layout:launch]   0x00180000000-0x001f8000000    1920.0 MiB tag=32 submap (1 regions)
+[layout:launch]   0x001f8000000-0x001f8cb8000      12.7 MiB tag=35 submap (1 regions)
+[layout:launch]   0x001f8cb8000-0x00200dc8000     129.1 MiB tag=0 (2 regions)
+[layout:launch]   0x00200dc8000-0x00202e98000      32.8 MiB tag=35 submap (2 regions)
+[layout:launch]   0x00202e98000-0x00204000000      17.4 MiB tag=35 (1 regions)
+[layout:launch]   0x00204000000-0x00205f20000      31.1 MiB tag=35 submap (1 regions)
+[layout:launch]   0x00205f20000-0x00207c80000      29.4 MiB tag=0 (2 regions)
+[layout:launch]   0x00207c80000-0x00208000000       3.5 MiB tag=35 submap (1 regions)
+[layout:launch]   0x00208000000-0x00268000000    1536.0 MiB tag=32 submap (1 regions)
+[layout:launch]   0x00268000000-0x00268c24000      12.1 MiB tag=35 submap (1 regions)
+[layout:launch]   0x00268c24000-0x0026f0a4000     100.5 MiB tag=0 (2 regions)
+[layout:launch]   0x0026f0a4000-0x00270000000      15.4 MiB tag=35 submap (1 regions)
+[layout:launch]   0x00270000000-0x00272000000      32.0 MiB tag=32 submap (1 regions)
+[layout:launch]   0x00272000000-0x0027393c000      25.2 MiB tag=35 submap (1 regions)
+[layout:launch]   0x0027393c000-0x00274c54000      19.1 MiB tag=0 (2 regions)
+[layout:launch]   0x00274c54000-0x00276000000      19.7 MiB tag=35 submap (1 regions)
+[layout:launch]   0x00276000000-0x00fc0000000   54432.0 MiB tag=32 submap (1 regions)
+[layout:launch]   0x00fc0000000-0x07000000000  394240.0 MiB tag=31 (2 regions)
+[layout:launch] 4 GiB slots   0-255 GiB: .##ssssssssssss#################################################
+[layout:launch] 4 GiB slots 256-511 GiB: ################################################..              
+[layout:launch] 4 GiB slots 512-767 GiB:                                                                 
+[layout:launch] 4 GiB slots 768-1023 GiB:                                                                 
+[layout:launch]   free gap 0x00000000000-0x00104a18000 (4.1 GiB), 4 GiB-aligned slots from 0x0
+[layout:launch]   free gap 0x07000000000-0x07180000000 (6.0 GiB), 4 GiB-aligned slots from 0x7000000000
+[capacity] reserve    4 GiB anywhere: ok at 0x7000000000
+[capacity] reserve    8 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   12 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   16 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   24 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   32 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   48 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve   64 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve  128 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve  256 GiB anywhere: FAILED ((os/kern) no space available)
+[capacity] reserve 1024 GiB anywhere: FAILED ((os/kern) no space available)
+[fixed:launch] base 0x8000000000 (512 GiB): FAILED ((os/kern) invalid address)
+[alias:vm_remap] base 0x7000000000 (448 GiB): OK - 8 views mapped in 0.06 ms, mirrors/atomics/zero-fill pass, fill 10.7 GB/s, copy 4.1 GB/s
+[fixed:launch] base 0xc00000000 (48 GiB): FAILED ((os/kern) no space available)
+[fixed:launch] base 0x800000000 (32 GiB): FAILED ((os/kern) no space available)
+[fixed:launch] base 0x400000000 (16 GiB): FAILED ((os/kern) no space available)
+[fixed:launch] base 0x200000000 (8 GiB): FAILED ((os/kern) no space available)
+[fixed:launch] 4 GiB FIXED reservation ok at GiB: 448
+[fixed:launch] 4 GiB FIXED reservation failed at GiB: 512,48,32,16,8,4,12,20,24,28,36,40,44,52,56,60,64,128,256,1024,2048,4096,8184
+[fixed:launch] preferred base: 0x7000000000 (448 GiB)
+[alias:file MAP_SHARED] base 0x7000000000 (448 GiB): OK - 8 views mapped in 0.46 ms, mirrors/atomics/zero-fill pass, fill 7.0 GB/s, copy 7.0 GB/s
+[signals] read of a PROT_NONE page: signal 10 (SIGBUS) at 0x104cec040, expected 0x104cec040: recovered OK
+[signals] write of a PROT_NONE page: signal 10 (SIGBUS) at 0x104cec040, expected 0x104cec040: recovered OK
+[storage] Documents                    exists=1 create=ok write=FAILED read=- write-error: You don’t have permission to save the file “probe-write-test.bin” in the folder “Documents”.
+[storage] Library/Application Support  exists=0 create=FAILED write=FAILED read=- create-error: You don’t have permission to save the file “Application Support” in the folder “Library”.
+[storage] Library/Caches               exists=1 create=ok write=ok read=ok
+[storage] Library/Preferences          exists=1 create=ok write=ok read=ok
+[storage] Library                      exists=1 create=ok write=FAILED read=- write-error: You don’t have permission to save the file “probe-write-test.bin” in the folder “Library”.
+[storage] tmp                          exists=1 create=ok write=ok read=ok
+[storage] NSUserDefaults 512 KiB blob: synchronize=ok read-back=ok
+[metal] holding the preferred guest space 0x7000000000 while Metal starts: yes
+[metal] device "Apple A19 GPU" families: Apple1 Apple2 Apple3 Apple4 Apple5 Apple6 Apple7 Apple8 Apple9 Apple10 Common1 Common2 Common3 Metal3 Metal4
+[metal] BC=1 unified=1 recommendedMaxWorkingSetSize=5461 MiB maxBufferLength=4096 MiB maxThreadgroupMemory=32768 argumentBuffersTier=1
+[metal] MetalFX spatial=1 temporal=1
+[metal] 32 x 32 MiB shared buffers: CPU 0x10a0d0000-0x14a0d0000, GPU 0x10000018000-0x10040110000, inside held guest space: 0
+[metal] GPU blit fill of 1 GiB: status=4 error=none, 87.8 ms, 32/32 buffers verified
+[metal] 4096x4096 RGBA8 mipmapped private texture: ok
+[layout:after-metal] vm_page_size=16384 vm_kernel_page_size=16384 getpagesize=16384
+[layout:after-metal] task min_address=0x104a18000 max_address=0x7180000000 (454.00 GiB) virtual_size=447.09 GiB phys_footprint=1051.7 MiB limit_bytes_remaining=1046.3 MiB (task_vm_info count 93)
+[layout:after-metal] 161 top-level regions, lowest 0x104a18000, highest end 0x7100000000 (452.00 GiB)
+[layout:after-metal]   0x00104a18000-0x00104a78000       0.4 MiB tag=0 (5 regions)
+[layout:after-metal]   0x00104a78000-0x00104a80000       0.0 MiB tag=73 (1 regions)
+[layout:after-metal]   0x00104a80000-0x00104b48000       0.8 MiB tag=0 (4 regions)
+[layout:after-metal]   0x00104b48000-0x00104b4c000       0.0 MiB tag=41 (1 regions)
+[layout:after-metal]   0x00104b4c000-0x00104b64000       0.1 MiB tag=0 (3 regions)
+[layout:after-metal]   0x00104b64000-0x00104b6c000       0.0 MiB tag=51 (2 regions)
+[layout:after-metal]   0x00104b6c000-0x00104bd8000       0.4 MiB tag=0 (1 regions)
+[layout:after-metal]   0x00104bd8000-0x00104c88000       0.7 MiB tag=1 (4 regions)
+[layout:after-metal]   0x00104c88000-0x00104c90000       0.0 MiB tag=11 (1 regions)
+[layout:after-metal]   0x00104c90000-0x00104cd0000       0.2 MiB tag=78 (1 regions)
+[layout:after-metal]   0x00104cd0000-0x00104ce4000       0.1 MiB tag=0 (2 regions)
+[layout:after-metal]   0x00104ce4000-0x00104cec000       0.0 MiB tag=1 (1 regions)
+[layout:after-metal]   0x00104cec000-0x00104cf4000       0.0 MiB tag=0 (1 regions)
+[layout:after-metal]   0x00104cf4000-0x001050cc000       3.8 MiB tag=1 (2 regions)
+[layout:after-metal]   0x001050cc000-0x001054cc000       4.0 MiB tag=7 (1 regions)
+[layout:after-metal]   0x001054cc000-0x00105550000       0.5 MiB tag=1 (2 regions)
+[layout:after-metal]   0x00105550000-0x00105560000       0.1 MiB tag=0 (3 regions)
+[layout:after-metal]   0x00105560000-0x00105564000       0.0 MiB tag=100 (1 regions)
+[layout:after-metal]   0x00105564000-0x00105568000       0.0 MiB tag=21 (1 regions)
+[layout:after-metal]   0x00105568000-0x00105574000       0.0 MiB tag=100 (1 regions)
+[layout:after-metal]   0x00105574000-0x00105578000       0.0 MiB tag=21 (1 regions)
+[layout:after-metal]   0x00105578000-0x001055b0000       0.2 MiB tag=0 (1 regions)
+[layout:after-metal]   0x001055b0000-0x00105694000       0.9 MiB tag=100 (13 regions)
+[layout:after-metal]   0x00105694000-0x001056c0000       0.2 MiB tag=0 (2 regions)
+[layout:after-metal]   0x00105800000-0x00105c00000       4.0 MiB tag=2 (1 regions)
+[layout:after-metal]   0x00105c00000-0x00107e70000      34.4 MiB tag=0 (1 regions)
+[layout:after-metal]   0x00107e70000-0x00108558000       6.9 MiB tag=51 (1 regions)
+[layout:after-metal]   0x00108558000-0x0010a0d0000      27.5 MiB tag=0 (1 regions)
+[layout:after-metal]   0x0010a0d0000-0x0014a0d0000    1024.0 MiB tag=100 (32 regions)
+[layout:after-metal]   0x0016b2e8000-0x0016b730000       4.3 MiB tag=30 (14 regions)
+[layout:after-metal]   0x00180000000-0x001f8000000    1920.0 MiB tag=32 submap (1 regions)
+[layout:after-metal]   0x001f8000000-0x001f8cb8000      12.7 MiB tag=35 submap (1 regions)
+[layout:after-metal]   0x001f8cb8000-0x00200dc8000     129.1 MiB tag=0 (2 regions)
+[layout:after-metal]   0x00200dc8000-0x00202e98000      32.8 MiB tag=35 submap (2 regions)
+[layout:after-metal]   0x00202e98000-0x00205f20000      48.5 MiB tag=35 (2 regions)
+[layout:after-metal]   0x00205f20000-0x00207c80000      29.4 MiB tag=0 (2 regions)
+[layout:after-metal]   0x00207c80000-0x00208000000       3.5 MiB tag=35 submap (1 regions)
+[layout:after-metal]   0x00208000000-0x00268000000    1536.0 MiB tag=32 submap (1 regions)
+[layout:after-metal]   0x00268000000-0x00268c24000      12.1 MiB tag=35 submap (1 regions)
+[layout:after-metal]   0x00268c24000-0x0026f0a4000     100.5 MiB tag=0 (2 regions)
+[layout:after-metal]   0x0026f0a4000-0x00270000000      15.4 MiB tag=35 submap (1 regions)
+[layout:after-metal]   0x00270000000-0x00272000000      32.0 MiB tag=32 submap (1 regions)
+[layout:after-metal]   0x00272000000-0x0027393c000      25.2 MiB tag=35 (1 regions)
+[layout:after-metal]   0x0027393c000-0x00274c54000      19.1 MiB tag=0 (2 regions)
+[layout:after-metal]   0x00274c54000-0x00276000000      19.7 MiB tag=35 submap (1 regions)
+[layout:after-metal]   0x00276000000-0x00fc0000000   54432.0 MiB tag=32 submap (1 regions)
+[layout:after-metal]   0x00fc0000000-0x07000000000  394240.0 MiB tag=31 (2 regions)
+[layout:after-metal]   0x07000000000-0x07100000000    4096.0 MiB tag=0 (32 regions)
+[layout:after-metal] 4 GiB slots   0-255 GiB: .##ssssssssssss#################################################
+[layout:after-metal] 4 GiB slots 256-511 GiB: #################################################.              
+[layout:after-metal] 4 GiB slots 512-767 GiB:                                                                 
+[layout:after-metal] 4 GiB slots 768-1023 GiB:                                                                 
+[layout:after-metal]   free gap 0x00000000000-0x00104a18000 (4.1 GiB), 4 GiB-aligned slots from 0x0
+[fixed:after-metal] base 0x8000000000 (512 GiB): FAILED ((os/kern) invalid address)
+[fixed:after-metal] base 0x7000000000 (448 GiB): FAILED ((os/kern) no space available)
+[fixed:after-metal] base 0xc00000000 (48 GiB): FAILED ((os/kern) no space available)
+[fixed:after-metal] base 0x800000000 (32 GiB): FAILED ((os/kern) no space available)
+[fixed:after-metal] base 0x400000000 (16 GiB): FAILED ((os/kern) no space available)
+[fixed:after-metal] base 0x200000000 (8 GiB): FAILED ((os/kern) no space available)
+[fixed:after-metal] 4 GiB FIXED reservation ok at GiB: (none)
+[fixed:after-metal] 4 GiB FIXED reservation failed at GiB: 512,448,48,32,16,8,4,12,20,24,28,36,40,44,52,56,60,64,128,256,1024,2048,4096,8184
+[metal] (the held base 0x7000000000 shows as taken above)
+[display] nativeBounds=3840x2160 scale=2.0 maximumFramesPerSecond=60
+[display] AVDisplayManager matching enabled=0 switching=0
+[done] report written to Library/Caches/tvprobe-report.txt

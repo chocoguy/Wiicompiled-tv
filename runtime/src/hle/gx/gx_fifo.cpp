@@ -448,6 +448,7 @@ void HleFifoWrite(u32 val, uint32_t sizeBytes) {
             if (g_hleGxState.fifoByteCount < 6) break;
             const uint8_t reg = data[1];
             const uint32_t cpValue = ReadBE32(data + 2);
+            if (IsVtxLayoutCpReg(reg)) GxVtxShadowNoteRawCpLoad(reg);
             GxCpDecode::ApplyCpRegWrite(reg, cpValue);
             if (!consumeBytes(6, sink)) break;
             continue;
@@ -717,6 +718,7 @@ static uint32_t ApplyFifoPacketsDirect(const uint8_t* data, uint32_t sizeBytes) 
             const uint32_t cpValue = ReadBE32(packet + 2);
             // Same function the parser calls, so the CP registers it does not
             // decode (0x30/0x40 among them) are dropped here identically.
+            if (IsVtxLayoutCpReg(reg)) GxVtxShadowNoteRawCpLoad(reg);
             GxCpDecode::ApplyCpRegWrite(reg, cpValue);
             offset += 6u;
             continue;

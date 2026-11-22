@@ -98,6 +98,11 @@ function(mkw_add_runtime_library target type)
     target_compile_definitions(${target} PRIVATE
         SDL_MAIN_HANDLED
         _DISABLE_STRING_ANNOTATION _DISABLE_VECTOR_ANNOTATION)
+    if(MKW_PLATFORM_TVOS)
+        # runtime_config.h restores the kept settings (src/platform/tvos/tvos_persistence.mm)
+        # before its first read, which happens during static initialization.
+        target_compile_definitions(${target} PRIVATE MKW_TVOS_PERSISTENCE=1)
+    endif()
     mkw_runtime_link_dependencies(${target} PRIVATE)
 
     if(MKW_CPPWINRT_INCLUDE_DIR)

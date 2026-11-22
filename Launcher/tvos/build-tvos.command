@@ -12,7 +12,7 @@ usage() {
     cat <<'EOF'
 Usage: Launcher/tvos/build-tvos.command --team TEAM_ID --device UDID [options]
 
-  --team TEAM_ID              Paid Apple Developer team that signs the app (Xcode > Settings > Accounts)
+  --team TEAM_ID              Apple Developer team that signs the app (a free team's installs expire after 7 days) (Xcode > Settings > Accounts)
   --device UDID               Paired Apple TV in developer mode (xcrun devicectl list devices)
   --game IMAGE --nodtool PATH Extract and verify a clean disc image into Assets/ first
   --data bundle|caches        Where the 2.5 GB of game data goes (default: bundle)

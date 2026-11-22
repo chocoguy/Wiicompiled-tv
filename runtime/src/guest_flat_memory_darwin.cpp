@@ -4,6 +4,7 @@
 // another name in a 64-bit task: <mach/mach_vm.h> is "#error unsupported" in the tvOS SDK.
 #include "guest_flat_memory.h"
 
+#include <TargetConditionals.h>
 #include <mach/mach.h>
 #include <mach/vm_map.h>
 #include <sys/mman.h>
@@ -39,6 +40,26 @@ std::vector<Mapping> g_mappings;
 std::vector<RegionRequest> g_layout;
 uint8_t* g_base = nullptr;
 bool g_active = false;
+// Set when the static constructor below already holds the 4 GiB slot.
+bool g_preReserved = false;
+
+#if TARGET_OS_TV
+// A tvOS app's address space ends at 454 GiB, and the only free 4 GiB-aligned slot is the 448 GiB
+// guest base (docs/tvos-m0-findings.md). Without the extended-virtual-addressing entitlement, any
+// allocation too big for the ~2 GiB free below the shared cache lands in that slot, so claim it
+// before UIKit, SDL, Metal or Dawn run: static constructors run before main(). Initialize() adopts
+// the reservation. If this fails, Initialize() tries again and reports the error.
+__attribute__((constructor)) void ReserveGuestSpaceAtLoad() {
+    vm_address_t address = kFixedFlatGuestBase;
+    if (vm_allocate(mach_task_self(), &address, kGuestSpaceSize, VM_FLAGS_FIXED) == KERN_SUCCESS) {
+        if (address == kFixedFlatGuestBase) {
+            g_preReserved = true;
+        } else {
+            vm_deallocate(mach_task_self(), address, kGuestSpaceSize);
+        }
+    }
+}
+#endif
 
 inline uint64_t RoundUp(uint64_t value, uint64_t align) {
     return (value + align - 1) & ~(align - 1);
@@ -88,7 +109,10 @@ void Initialize(const std::vector<RegionRequest>& regions) {
     }
 
     vm_address_t address = kFixedFlatGuestBase;
-    const kern_return_t reserved = vm_allocate(mach_task_self(), &address, kGuestSpaceSize, VM_FLAGS_FIXED);
+    const kern_return_t reserved = g_preReserved
+        ? KERN_SUCCESS
+        : vm_allocate(mach_task_self(), &address, kGuestSpaceSize, VM_FLAGS_FIXED);
+    g_preReserved = false;   // from here on the reservation is owned (and released on failure) below
     if (reserved != KERN_SUCCESS || address != kFixedFlatGuestBase) {
         if (reserved == KERN_SUCCESS) {
             vm_deallocate(mach_task_self(), address, kGuestSpaceSize);

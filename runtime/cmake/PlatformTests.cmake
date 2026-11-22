@@ -234,8 +234,19 @@ if(MKW_PLATFORM_TVOS)
     target_compile_definitions(mkw_tvos_main_stack_tests PRIVATE
         MKW_EXPECTED_MAIN_STACK=${MKW_TVOS_MAIN_STACK_SIZE})
 
+    # Saves outliving a cache purge (src/platform/tvos/tvos_persistence.mm).
+    enable_language(OBJCXX)
+    add_executable(mkw_tvos_persistence_tests
+        "${MKW_TEST_RUNTIME_DIR}/tests/tvos_persistence_tests.cpp"
+        "${MKW_TEST_RUNTIME_DIR}/src/platform/tvos/tvos_persistence.mm"
+        "${MKW_TEST_RUNTIME_DIR}/src/platform/host_platform.cpp")
+    target_include_directories(mkw_tvos_persistence_tests PRIVATE "${MKW_TEST_RUNTIME_DIR}/include")
+    set_source_files_properties("${MKW_TEST_RUNTIME_DIR}/src/platform/tvos/tvos_persistence.mm"
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(mkw_tvos_persistence_tests PRIVATE "-framework Foundation" compression)
+
     foreach(test mkw_tvos_context_abi_tests mkw_tvos_host_context_tests
-                 mkw_tvos_guest_flat_memory_tests mkw_tvos_main_stack_tests)
+                 mkw_tvos_guest_flat_memory_tests mkw_tvos_main_stack_tests mkw_tvos_persistence_tests)
         target_compile_features(${test} PRIVATE cxx_std_17)
         add_test(NAME ${test} COMMAND ${test})
     endforeach()

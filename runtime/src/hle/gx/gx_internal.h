@@ -379,6 +379,14 @@ void MarkTlutObjsDirtyForRange(uint32_t addr, uint32_t size);
 extern "C" void GxNotifyGuestRamDmaWrite(uint32_t addr, uint32_t size);
 
 void HleFifoWrite(u32 val, uint32_t sizeBytes);
+
+// Game-thread copy of the vertex layout (gx_vertex.cpp): a display list may change the layout,
+// and a gather-pipe CP load of it turns the copy off.
+void GxVtxShadowInvalidate() noexcept;
+void GxVtxShadowNoteRawCpLoad(uint8_t reg) noexcept;
+inline bool IsVtxLayoutCpReg(uint8_t reg) noexcept {
+    return reg == 0x50 || reg == 0x60 || (reg >= 0x70 && reg <= 0x97);
+}
 void SubmitAttribute(GXAttr attr, float* comps, const VtxAttrFmt& fmt, const u32* rawComps = nullptr);
 void SubmitIndexedAttribute(GXAttr attr, uint32_t index);
 

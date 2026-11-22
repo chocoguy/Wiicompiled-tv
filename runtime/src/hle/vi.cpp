@@ -162,7 +162,7 @@ constexpr std::chrono::microseconds kFinalSpinWindow{500};
 
 void SleepPreciselyUntil(Clock::time_point deadline, bool finishWithSpin = false,
                          std::chrono::microseconds spinWindow = 750us) {
-    PerfStats::WaitScope wait;
+    PerfStats::WaitScope wait(PerfStats::WaitKind::Pacing);
     const auto now = Clock::now();
     if (now >= deadline) {
         return;

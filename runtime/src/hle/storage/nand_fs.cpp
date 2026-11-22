@@ -1,6 +1,7 @@
 // NAND/ISFS HLE: redirects Wii NAND paths (e.g. /title/00010004/524d4350/data/rksys.dat) to
 // <nand_root>\title\00010004\524d4350\data\rksys.dat on the host.
 
+#include "nand_persistence.h"
 #include "nand_internal.h"
 
 #include "isa/big_endian.h"
@@ -69,7 +70,12 @@ void CloseFd(int32_t fd) {
         if (it->second.file) {
             std::fclose(it->second.file);
         }
+        const bool written = it->second.mode >= 2;
+        const std::filesystem::path path = it->second.path;
         g_fileHandles.erase(it);
+        if (written) {
+            NandPersistence::FileWritten(path);
+        }
     }
 }
 

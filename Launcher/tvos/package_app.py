@@ -11,8 +11,10 @@ initial_pipeline_cache.db, cacert.pem) in the bundle root. This copies the bundl
     (tv_icon.swift, then actool) and merges actool's icon keys into Info.plist;
   - with --data bundle (the default), clones Assets/DATA into the bundle, which tvOS never purges;
     with --data caches, leaves it out for build-tvos.command to push into Library/Caches once;
-  - signs it with a profile for the bundle ID that grants extended virtual addressing, first having
-    Xcode create one (Launcher/tvos/provision) when none has been downloaded yet.
+  - signs it with a profile that covers the bundle ID (its own App ID or a wildcard), first having
+    Xcode create one (Launcher/tvos/provision) when none has been downloaded yet. The app needs no
+    special entitlements: the guest space claims its slot before UIKit starts (M6), so it no longer
+    asks for extended virtual addressing.
 Prints the packaged app's path on its last line.
 """
 import argparse
@@ -30,7 +32,6 @@ sys.path.insert(0, str(HERE))  # python3 -I leaves the script's folder off sys.p
 import tvos_signing  # noqa: E402
 
 REPO = HERE.parent.parent
-XVA = "com.apple.developer.kernel.extended-virtual-addressing"
 
 
 def fail(message):
@@ -105,11 +106,10 @@ def build_icon(app, min_os, work):
 
 
 def ensure_profile(team, bundle_id, device, work):
-    wanted = {XVA: True}
-    found = tvos_signing.find_profile(team, bundle_id, device, wanted, exact_only=True)
+    found = tvos_signing.find_profile(team, bundle_id, device)
     if found:
         return found
-    print(f"package_app: asking Xcode for a provisioning profile for {bundle_id} (extended virtual addressing)")
+    print(f"package_app: asking Xcode for a provisioning profile for {bundle_id}")
     build = work / "provision"
     build.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, DEVELOPMENT_TEAM=team, PROVISION_BUNDLE_ID=bundle_id,
@@ -119,10 +119,10 @@ def ensure_profile(team, bundle_id, device, work):
     run(["xcodebuild", "-project", str(build / "WiiCompiledProvisioning.xcodeproj"), "-scheme", "WiiCompiledProvisioning",
          "-configuration", "Release", "-destination", "generic/platform=tvOS", "-derivedDataPath", str(build / "dd"),
          "-allowProvisioningUpdates", "-allowProvisioningDeviceRegistration", "build"], env=env)
-    found = tvos_signing.find_profile(team, bundle_id, device, wanted, exact_only=True)
+    found = tvos_signing.find_profile(team, bundle_id, device)
     if not found:
-        fail(f"Xcode made no profile for {bundle_id} that grants {XVA}; extended virtual addressing needs a paid "
-             "developer team (sign in under Xcode > Settings > Accounts)")
+        fail(f"Xcode made no profile for {bundle_id}; sign in to the team under Xcode > Settings > Accounts "
+             "and pair the Apple TV with Xcode")
     return found
 
 
@@ -164,7 +164,7 @@ def main():
             clone_tree(data, app / "DATA")
         profile_path, profile = ensure_profile(args.team, bundle_id, args.device, work)
         try:
-            tvos_signing.sign_bundle(app, profile_path, profile, args.team, bundle_id, {XVA: True}, work=work)
+            tvos_signing.sign_bundle(app, profile_path, profile, args.team, bundle_id, work=work)
         except tvos_signing.SigningError as error:
             fail(str(error))
     print(f"package_app: signed {bundle_id} with {profile.get('Name')}")

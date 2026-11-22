@@ -15,9 +15,11 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 // macOS finds other apps' audio through the CoreAudio HAL process list
-// (external_audio_macos.cpp). tvOS has no such API, so it takes the "media
-// controls unavailable" path below.
-#if !TARGET_OS_TV
+// (external_audio_macos.cpp). tvOS has no such API; it asks AVAudioSession
+// whether another app wants secondary audio such as game music silenced.
+#if TARGET_OS_TV
+#define MKW_TVOS_EXTERNAL_AUDIO 1
+#else
 #define MKW_MACOS_EXTERNAL_AUDIO 1
 #endif
 #endif
@@ -29,6 +31,8 @@
 #include <winrt/Windows.Media.Control.h>
 #elif defined(MKW_MACOS_EXTERNAL_AUDIO)
 #include "external_audio_macos.h"
+#elif defined(MKW_TVOS_EXTERNAL_AUDIO)
+#include "platform/tvos_platform.h"
 #elif defined(__linux__)
 #include <dlfcn.h>
 
@@ -475,6 +479,18 @@ void MonitorLinuxMprisSessions() noexcept {
 }
 #endif
 
+#if defined(MKW_TVOS_EXTERNAL_AUDIO)
+void MonitorTvosAudio() noexcept {
+    using namespace std::chrono_literals;
+    g_mediaControlAvailable.store(true, std::memory_order_release);
+    g_mediaControlInitializationComplete.store(true, std::memory_order_release);
+    for (;;) {
+        g_externalMediaPlaying.store(TvosPlatform::OtherAudioWantsSilence(), std::memory_order_release);
+        std::this_thread::sleep_for(250ms);
+    }
+}
+#endif
+
 #if defined(MKW_MACOS_EXTERNAL_AUDIO)
 void MonitorMacOSAudio() noexcept {
     using namespace std::chrono_literals;
@@ -498,6 +514,8 @@ void StartMonitor() noexcept {
     std::thread(MonitorLinuxMprisSessions).detach();
 #elif defined(MKW_MACOS_EXTERNAL_AUDIO)
     std::thread(MonitorMacOSAudio).detach();
+#elif defined(MKW_TVOS_EXTERNAL_AUDIO)
+    std::thread(MonitorTvosAudio).detach();
 #else
     g_mediaControlAvailable.store(false, std::memory_order_release);
     g_mediaControlInitializationComplete.store(true, std::memory_order_release);

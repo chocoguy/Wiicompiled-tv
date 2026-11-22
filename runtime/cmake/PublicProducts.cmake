@@ -184,6 +184,9 @@ function(mkw_configure_product target)
         "${MKW_AURORA_DIR}/include")
     target_compile_definitions(${target} PRIVATE
         SDL_MAIN_HANDLED _DISABLE_STRING_ANNOTATION _DISABLE_VECTOR_ANNOTATION TARGET_PC)
+    if(MKW_PLATFORM_TVOS)
+        target_compile_definitions(${target} PRIVATE MKW_TVOS_PERSISTENCE=1)   # see RuntimeLibrary.cmake
+    endif()
     target_compile_features(${target} PRIVATE cxx_std_20)
     mkw_apply_common_compile_options(${target})
     target_link_libraries(${target} PRIVATE
@@ -201,6 +204,11 @@ function(mkw_configure_product target)
         # tvOS gives that thread 1,008 KiB unless the executable asks for more; tvOS honors
         # -stack_size (mkw_tvos_main_stack_tests, run on an A15 under tvOS 27.2).
         target_link_options(${target} PRIVATE "LINKER:-stack_size,${MKW_TVOS_MAIN_STACK_SIZE}")
+        # src/platform/tvos/tvos_platform.mm. AVKit only supplies a UIWindow category, so nothing
+        # else pulls it in: without this the selector is unrecognized at run time (M0 probe).
+        target_link_libraries(${target} PRIVATE
+            "-framework AVKit" "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia"
+            "-framework UIKit" compression)   # compression: tvos_persistence.mm (LZFSE)
     endif()
     if(EXISTS "${MKW_AURORA_DIR}/cmake/AuroraCopyRuntimeDLLs.cmake")
         include("${MKW_AURORA_DIR}/cmake/AuroraCopyRuntimeDLLs.cmake")

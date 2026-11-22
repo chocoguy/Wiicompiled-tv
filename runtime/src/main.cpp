@@ -72,6 +72,9 @@
 #include "ppc_runtime.h"
 #include "aurora_events.h"
 #include "wiimote_host.h"
+#if defined(__APPLE__) && TARGET_OS_TV
+#include "platform/tvos_platform.h"
+#endif
 #include "discord_presence.h"
 #include "steam_input_layout.h"
 #include "fiber_manager.h"
@@ -1479,6 +1482,11 @@ int RuntimeMain(int argc, char** argv) {
             throw std::runtime_error(auroraInfo.initializationError != nullptr
                 ? auroraInfo.initializationError : "No supported graphics backend is available");
         }
+#if defined(__APPLE__) && TARGET_OS_TV
+        // The game presents at 60 Hz; with Match Frame Rate on, the TV switches to a 60 Hz mode.
+        TvosPlatform::RequestDisplayRefreshRate(auroraInfo.window, 60.0f);
+        TvosPlatform::WatchAppLifecycle();
+#endif
         if (requestedBackend != BACKEND_AUTO && auroraInfo.backend != requestedBackend) {
             RT_LOG(RT_TAG_RUNTIME) << "graphics_api=\"" << backend
                       << "\" is not available on this system; aurora fell back to \""

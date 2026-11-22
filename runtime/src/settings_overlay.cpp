@@ -13,6 +13,15 @@
 #include "wiimote_host.h"
 
 #include <imgui.h>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_TV
+// Apple TV: no keyboard, no windows and no quitting. A controller's Back/View button toggles the
+// settings (the game never uses it), ImGui is navigated with the controller, and desktop-only
+// sections (Wii Remote pairing, display mode, quit) are left out.
+#define MKW_OVERLAY_TVOS 1
+#endif
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_keyboard.h>
@@ -117,7 +126,13 @@ bool g_showFps = RuntimeConfigFile::ShowFps(true);
 bool g_forceAspect = RuntimeConfigFile::ForceAspectEnabled();
 bool g_widescreen = RuntimeConfigFile::WidescreenEnabled(true);
 #if defined(__APPLE__)
+#if defined(MKW_OVERLAY_TVOS)
+// On by default on Apple TV: the game renders at 1x and the TV outputs 4K, so without MetalFX the
+// image is stretched about 4x with a bilinear filter.
+bool g_metalFxSpatialUpscaling = RuntimeConfigFile::MetalFxSpatialUpscaling(true);
+#else
 bool g_metalFxSpatialUpscaling = RuntimeConfigFile::MetalFxSpatialUpscaling(false);
+#endif
 #endif
 uint32_t g_disabledPostProcessingPaths = RuntimeConfigFile::DisabledPostProcessingPaths(0);
 std::array<int32_t, PAD_MAX_CONTROLLERS> g_configuredControllerIndices = [] {
@@ -244,11 +259,26 @@ std::string NativeBindingConfig(uint32_t binding) {
 }
 
 
+#if MKW_OVERLAY_TVOS
+// Set when the settings open, so the next menu bar puts the controller's nav cursor on its first menu.
+bool g_focusMenuBarPending = false;
+#endif
+
 void SetTopBarVisible(bool visible) {
     if (g_topBarVisible == visible) {
         return;
     }
     g_topBarVisible = visible;
+#if MKW_OVERLAY_TVOS
+    // Controller navigation only while the settings are open; otherwise the pad belongs to the game.
+    ImGuiIO& io = ImGui::GetIO();
+    if (visible) {
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+        g_focusMenuBarPending = true;
+    } else {
+        io.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+    }
+#endif
 }
 
 void ApplyConfiguredMappings() {
@@ -1029,7 +1059,11 @@ void DrawControllerSettings() {
         anyRemote |= Wiimote::Slot(player).attached;
     }
     if (PADCount() == 0 && !anyRemote) {
+#if MKW_OVERLAY_TVOS
+        ImGui::TextDisabled("No controller detected. Pair one in Settings > Remotes and Devices on the Apple TV.");
+#else
         ImGui::TextDisabled("No controller detected. Plug one in, or pair a Wii Remote below.");
+#endif
     }
 
     const uint32_t port = static_cast<uint32_t>(g_controllerPort);
@@ -1063,7 +1097,9 @@ void DrawControllerSettings() {
 
     ImGui::Spacing();
     controller_mapping_wizard::DrawSetupList();
+#if !MKW_OVERLAY_TVOS  // tvOS cannot reach classic-Bluetooth Wii Remotes
     DrawWiiRemoteSetup();
+#endif
     DrawRumbleSettings();
 }
 
@@ -1120,7 +1156,11 @@ void DrawAudioSettings() {
         MusicAttenuation::SetEnabled(g_attenuateMusicWhenMediaPlays);
         RuntimeConfigFile::SetAttenuateMusicWhenMediaPlays(g_attenuateMusicWhenMediaPlays);
     }
-#if defined(__APPLE__)
+#if MKW_OVERLAY_TVOS
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Mutes game music while another app on the Apple TV asks other audio to go quiet.");
+    }
+#elif defined(__APPLE__)
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip(
             "Detects other apps with active audio output on macOS 14.2 or later. "
@@ -1185,6 +1225,7 @@ void DrawGraphicsSettings() {
     }
     ImGui::TextDisabled("Applied when the next scene renderer is created.");
     ImGui::Separator();
+#if !MKW_OVERLAY_TVOS  // always fullscreen on a TV
     static constexpr const char* kDisplayModes[] = {
         "Windowed",
         "Borderless fullscreen",
@@ -1205,6 +1246,7 @@ void DrawGraphicsSettings() {
             "Requests the closest native-resolution display mode to the output frame "
             "rate (60 Hz, or the frame interpolation target).");
     }
+#endif
     constexpr std::array<const char*, 3> kFrameInterpolationModes{
         "Off", "120 FPS", "180 FPS",
     };
@@ -1254,7 +1296,11 @@ void DrawGraphicsSettings() {
         ImGui::TextDisabled("Choose a lower internal resolution to use MetalFX.");
         break;
     case AURORA_METALFX_UNSUPPORTED:
+#if defined(MKW_OVERLAY_TVOS)
+        ImGui::TextDisabled("Requires tvOS 27.1 or newer.");
+#else
         ImGui::TextDisabled("Requires macOS 13+, Metal, and a MetalFX-capable GPU.");
+#endif
         break;
     case AURORA_METALFX_ERROR:
         ImGui::TextDisabled("Unavailable after a renderer error; toggle off and on to retry.");
@@ -1407,7 +1453,11 @@ void DrawStartupScreen() {
             ImGui::TextUnformatted(line);
             nextY = ImGui::GetCursorPosY() + 4.0f;
         }
+#if MKW_OVERLAY_TVOS
+        constexpr const char* kHint = "Press Back (View) on a controller to open settings";
+#else
         constexpr const char* kHint = "Press F10 to open settings";
+#endif
         ImGui::SetWindowFontScale(0.8f);
         const ImVec2 hintSize = ImGui::CalcTextSize(kHint);
         ImGui::SetCursorPos(ImVec2(std::max(0.0f, (viewport->Size.x - hintSize.x) * 0.5f), nextY));
@@ -1476,8 +1526,13 @@ void DrawTopBar() {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                      ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_NoFocusOnAppearing)) {
+#if MKW_OVERLAY_TVOS
+        for (const char* line : {"Settings open - game controls disabled.",
+                                 "D-pad/stick to move, A to choose, Back to return to the game."}) {
+#else
         for (const char* line : {"Settings open - game controls disabled.",
                                  "Press F10 to return to the game."}) {
+#endif
             ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line).x) * 0.5f);
             ImGui::TextUnformatted(line);
         }
@@ -1487,6 +1542,12 @@ void DrawTopBar() {
 
     ImGui::TextUnformatted("WiiCompiled");
     ImGui::Separator();
+#if MKW_OVERLAY_TVOS
+    if (g_focusMenuBarPending) {
+        ImGui::SetKeyboardFocusHere();
+        g_focusMenuBarPending = false;
+    }
+#endif
     const auto resolutionIt = std::find_if(kResolutions.begin(), kResolutions.end(), [](const ResolutionItem& item) {
         return std::fabs(item.scale - g_resolutionScale) < 0.001f;
     });
@@ -1534,6 +1595,14 @@ void DrawTopBar() {
     }
 
     const ImGuiStyle& style = ImGui::GetStyle();
+#if MKW_OVERLAY_TVOS
+    // tvOS apps are left with the TV button, never quit from inside.
+    const float hideWidth = ImGui::CalcTextSize("Hide (Back)").x + style.FramePadding.x * 2.0f;
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - hideWidth - 8.0f));
+    if (ImGui::MenuItem("Hide (Back)")) {
+        SetTopBarVisible(false);
+    }
+#else
     const float hideWidth = ImGui::CalcTextSize("Hide (F10)").x + style.FramePadding.x * 2.0f;
     const float exitWidth = ImGui::CalcTextSize("X").x + style.FramePadding.x * 2.0f;
     ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(),
@@ -1544,6 +1613,7 @@ void DrawTopBar() {
     if (ImGui::MenuItem("X")) {
         g_exitPromptOpen = true;
     }
+#endif
     ImGui::EndMainMenuBar();
 }
 
@@ -1667,6 +1737,13 @@ void HandleEvents(const AuroraEvent* events) noexcept {
             SetTopBarVisible(!g_topBarVisible);
             ApplyInputBlockState();
         }
+#if MKW_OVERLAY_TVOS
+        if (!g_rebind.active && ev->sdl.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
+            ev->sdl.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) {
+            SetTopBarVisible(!g_topBarVisible);
+            ApplyInputBlockState();
+        }
+#endif
         if (!g_rebind.active && g_muteHotkey != PAD_KEY_INVALID &&
             IsToggleKey(ev->sdl, static_cast<SDL_Scancode>(g_muteHotkey))) {
             g_audioMuted = !g_audioMuted;
@@ -1680,9 +1757,12 @@ void HandleEvents(const AuroraEvent* events) noexcept {
                 g_exitPromptOpen = false;
             } else if (g_topBarVisible) {
                 SetTopBarVisible(false);
-            } else if (!ValveControllerConnected()) {
+            }
+#if !MKW_OVERLAY_TVOS  // tvOS apps never offer to quit; the TV button leaves them
+            else if (!ValveControllerConnected()) {
                 g_exitPromptOpen = true;
             }
+#endif
             ApplyInputBlockState();
         }
         if (IsMouseActivity(ev->sdl)) {

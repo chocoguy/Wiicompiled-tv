@@ -5,8 +5,10 @@
 #include "guest_interrupt_context.h"
 #include "runtime_log.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace {
 uint32_t CanonicalVtxAttr(uint32_t attr) {
@@ -30,6 +32,103 @@ void ApplyAuroraVtxStateForBegin(GXVtxFmt fmt) {
 }
 }
 
+// ============================================================================
+// Game-thread copy of the vertex descriptor and attribute formats
+// ============================================================================
+// nw4r::ef::DrawStrategyImpl::SetupGP (0x8003CB60) asks GXGetVtxDesc and GXGetVtxAttrFmt for the
+// current layout before every particle draw, thousands of times a frame in a race. Answering from
+// g_hleGxState meant draining the GX worker first (GX_SYNC_INLINE) every time, which serialized the
+// game thread behind the worker: on an Apple TV 4K (A15) the race intro fell to 31 fps with the
+// game thread stalled about 19 ms a frame (docs/tvos-porting-plan.md, M6).
+//
+// The setters below run on the game thread before they are deferred, so a copy kept there is exact
+// as long as nothing else changes the layout. Display lists can (CP register loads), so
+// GXCallDisplayList marks the copy stale and the next query syncs and refreshes it. A gather-pipe CP
+// load of the layout turns the copy off for good (GxVtxShadowNoteRawCpLoad). With
+// MKW_GX_VTX_SHADOW_VERIFY=1 every query syncs anyway and any difference from the copy is logged.
+namespace {
+struct VtxShadow {
+    bool valid = false;
+    GXAttrType desc[26]{};
+    VtxAttrFmt fmt[8][26]{};
+};
+VtxShadow g_vtxShadow;   // game thread only
+std::atomic<bool> g_vtxShadowDisabled{false};
+uint64_t g_vtxShadowChecks = 0;
+uint64_t g_vtxShadowMismatches = 0;
+
+bool VerifyVtxShadow() {
+    static const bool verify = [] {
+        const char* value = std::getenv("MKW_GX_VTX_SHADOW_VERIFY");
+        return value != nullptr && value[0] == '1';
+    }();
+    return verify;
+}
+
+// Deferring from the game thread with a copy that is still exact: answer without draining the worker.
+bool UseVtxShadow() {
+    return GxWorker::ShouldDefer() && g_vtxShadow.valid && !VerifyVtxShadow() &&
+           !g_vtxShadowDisabled.load(std::memory_order_relaxed);
+}
+
+// After a sync on the game thread: the worker's applied state is the exact current layout.
+void RefreshVtxShadow() {
+    if (GxWorker::OnWorker() || g_vtxShadowDisabled.load(std::memory_order_relaxed)) {
+        return;
+    }
+    std::memcpy(g_vtxShadow.desc, g_hleGxState.vtxDesc, sizeof(g_vtxShadow.desc));
+    std::memcpy(g_vtxShadow.fmt, g_hleGxState.vtxAttrFmt, sizeof(g_vtxShadow.fmt));
+    g_vtxShadow.valid = true;
+}
+
+void CheckVtxShadow(bool same, const char* what, uint32_t a, uint32_t b) {
+    if (!VerifyVtxShadow() || !g_vtxShadow.valid || GxWorker::OnWorker()) {
+        return;
+    }
+    ++g_vtxShadowChecks;
+    if (!same) {
+        if (++g_vtxShadowMismatches <= 20) {
+            RT_LOGF(RT_TAG_GX, "vtx shadow MISMATCH %s (%u, %u)\n", what, a, b);
+        }
+    }
+    if ((g_vtxShadowChecks & 0xFFFFu) == 0) {
+        RT_LOGF(RT_TAG_GX, "vtx shadow verify: %llu checks, %llu mismatches\n",
+                static_cast<unsigned long long>(g_vtxShadowChecks),
+                static_cast<unsigned long long>(g_vtxShadowMismatches));
+    }
+}
+
+void ShadowSetDesc(uint32_t a, uint32_t t) {
+    if (GxWorker::OnWorker()) return;
+    const uint32_t attr = CanonicalVtxAttr(a);
+    if (attr >= 26 || attr == GX_VA_NULL) return;
+    g_vtxShadow.desc[attr] = static_cast<GXAttrType>(t);
+    if (a == GX_VA_NBT) g_vtxShadow.desc[GX_VA_NBT] = GX_NONE;
+}
+
+void ShadowSetAttrFmt(uint32_t vf, uint32_t a, uint32_t c, uint32_t t, uint32_t fr) {
+    if (GxWorker::OnWorker()) return;
+    const uint32_t attr = CanonicalVtxAttr(a);
+    if (vf >= 8 || attr >= 26) return;
+    g_vtxShadow.fmt[vf][attr].cnt = static_cast<GXCompCnt>(c);
+    g_vtxShadow.fmt[vf][attr].type = static_cast<GXCompType>(t);
+    g_vtxShadow.fmt[vf][attr].frac = static_cast<u8>(fr);
+    if (a == GX_VA_NBT) g_vtxShadow.fmt[vf][GX_VA_NBT] = {};
+}
+} // namespace
+
+void GxVtxShadowInvalidate() noexcept {
+    if (!GxWorker::OnWorker()) {
+        g_vtxShadow.valid = false;
+    }
+}
+
+void GxVtxShadowNoteRawCpLoad(uint8_t reg) noexcept {
+    if (!g_vtxShadowDisabled.exchange(true, std::memory_order_relaxed)) {
+        RT_LOGF(RT_TAG_GX, "vtx shadow off: the gather pipe loaded vertex layout CP register 0x%02X\n", reg);
+    }
+}
+
 bool ApiVtxArray(uint32_t attr, uint32_t& base, uint32_t& stride) {
     if (attr >= 26) return false;
     base = g_apiVtxArrays[attr][0];
@@ -42,6 +141,9 @@ bool ApiVtxArray(uint32_t attr, uint32_t& base, uint32_t& stride) {
 // ============================================================================
 
 extern "C" void GX__ClearVtxDesc_8016dc34() {
+    if (!GxWorker::OnWorker()) {
+        for (auto& type : g_vtxShadow.desc) type = GX_NONE;
+    }
     GX_DEFER_CALL0(GX__ClearVtxDesc_8016dc34);
     bool changed = false;
     for(int i=0; i<26; ++i){
@@ -55,6 +157,7 @@ extern "C" void GX__ClearVtxDesc_8016dc34() {
 PPC_NATIVE_OVERRIDE_VOID(8016dc34, GX__ClearVtxDesc_8016dc34, (), ());
 
 extern "C" void GX__SetVtxDesc_8016d3a4(uint32_t a, uint32_t t) {
+    ShadowSetDesc(a, t);
     GX_DEFER_CALL(GX__SetVtxDesc_8016d3a4, a, t);
     const uint32_t attr = CanonicalVtxAttr(a);
     if(attr>=26||attr==GX_VA_NULL) return;
@@ -78,19 +181,28 @@ extern "C" void GX__SetVtxDescv_8016d608(uint32_t la) {
         list.push_back({a, Memory::Read32(p+4)});
         p+=8;
     }
+    for (const auto& [a, t] : list) ShadowSetDesc(a, t);
     GxWorker::Run([list = std::move(list)] {
         for (const auto& [a, t] : list) GX__SetVtxDesc_8016d3a4(a, t);
     });
 }
 PPC_NATIVE_OVERRIDE_VOID(8016d608, GX__SetVtxDescv_8016d608, (uint32_t la), (la));
 
-// Display lists can change the vertex layout, so answer from the state the worker has applied.
+// Answered from the game-thread copy while it is exact; otherwise from the state the worker has
+// applied, which display lists may have changed (see "Game-thread copy" above).
 extern "C" void GX__GetVtxDesc_8016d9f0(uint32_t a, uint32_t tp) {
-    GX_SYNC_INLINE();
     GXAttrType type = GX_NONE;
     const uint32_t attr = CanonicalVtxAttr(a);
-    if (attr < GX_VA_MAX_ATTR && attr != GX_VA_NULL) {
-        type = g_hleGxState.vtxDesc[attr];
+    const bool known = attr < GX_VA_MAX_ATTR && attr != GX_VA_NULL;
+    if (UseVtxShadow()) {
+        if (known) type = g_vtxShadow.desc[attr];
+    } else {
+        GX_SYNC_INLINE();
+        if (known) {
+            type = g_hleGxState.vtxDesc[attr];
+            CheckVtxShadow(g_vtxShadow.desc[attr] == type, "desc", attr, static_cast<uint32_t>(type));
+        }
+        RefreshVtxShadow();
     }
     if (tp) {
         Memory::Write32(tp, static_cast<uint32_t>(type));
@@ -122,6 +234,7 @@ PPC_NATIVE_OVERRIDE_VOID(8016dba4, GX__GetVtxDescv_8016dba4, (uint32_t la), (la)
 // ============================================================================
 
 extern "C" void GX__SetVtxAttrFmt_8016dc68(uint32_t vf, uint32_t a, uint32_t c, uint32_t t, uint32_t fr) {
+    ShadowSetAttrFmt(vf, a, c, t, fr);
     GX_DEFER_CALL(GX__SetVtxAttrFmt_8016dc68, vf, a, c, t, fr);
     const uint32_t attr = CanonicalVtxAttr(a);
     if(vf<8&&attr<26){
@@ -153,6 +266,7 @@ extern "C" void GX__SetVtxAttrFmtv_8016de08(uint32_t vf, uint32_t la) {
         list.push_back({a, Memory::Read32(p+4), Memory::Read32(p+8), Memory::Read8(p+12)});
         p+=16;
     }
+    for (const auto& [a, c, t, fr] : list) ShadowSetAttrFmt(vf, a, c, t, fr);
     GxWorker::Run([vf, list = std::move(list)] {
         for (const auto& [a, c, t, fr] : list) GX__SetVtxAttrFmt_8016dc68(vf, a, c, t, fr);
     });
@@ -160,11 +274,20 @@ extern "C" void GX__SetVtxAttrFmtv_8016de08(uint32_t vf, uint32_t la) {
 PPC_NATIVE_OVERRIDE_VOID(8016de08, GX__SetVtxAttrFmtv_8016de08, (uint32_t vf, uint32_t la), (vf, la));
 
 extern "C" void GX__GetVtxAttrFmt_8016e04c(uint32_t vf, uint32_t a, uint32_t cp, uint32_t tp, uint32_t fp) {
-    GX_SYNC_INLINE();
     VtxAttrFmt fmt{};
     const uint32_t attr = CanonicalVtxAttr(a);
-    if (vf < 8 && attr < GX_VA_MAX_ATTR && attr != GX_VA_NULL) {
-        fmt = g_hleGxState.vtxAttrFmt[vf][attr];
+    const bool known = vf < 8 && attr < GX_VA_MAX_ATTR && attr != GX_VA_NULL;
+    if (UseVtxShadow()) {
+        if (known) fmt = g_vtxShadow.fmt[vf][attr];
+    } else {
+        GX_SYNC_INLINE();
+        if (known) {
+            fmt = g_hleGxState.vtxAttrFmt[vf][attr];
+            const VtxAttrFmt& copy = g_vtxShadow.fmt[vf][attr];
+            CheckVtxShadow(copy.cnt == fmt.cnt && copy.type == fmt.type && copy.frac == fmt.frac, "fmt",
+                           vf * 32 + attr, static_cast<uint32_t>(fmt.type));
+        }
+        RefreshVtxShadow();
     }
     if (cp) {
         Memory::Write32(cp, static_cast<uint32_t>(fmt.cnt));

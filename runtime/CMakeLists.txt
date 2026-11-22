@@ -60,6 +60,12 @@ else()
 endif()
 
 if(MKW_PLATFORM_TVOS)
+    # Objective-C(++) for src/platform/tvos/*.mm. Enabled here, before aurora and SDL are added,
+    # because enabling a language after them changes the flags their Objective-C sources get.
+    enable_language(OBJC OBJCXX)
+endif()
+
+if(MKW_PLATFORM_TVOS)
     # On-device tests: with both set, ctest runs every test executable on that Apple TV through
     # Launcher/tvos/run_on_device.py (signed with a tvOS team profile Xcode has downloaded).
     # Without them the tvOS tests still build, but ctest cannot run them on the Mac.
@@ -417,6 +423,11 @@ if(MKW_PLATFORM_TVOS)
     # SDL_main.h defines main as a macro; keep that file in a translation unit of its own.
     set_source_files_properties("${CMAKE_CURRENT_LIST_DIR}/src/platform/tvos/tvos_main.cpp" PROPERTIES
         SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON)
+    # Objective-C++ platform services (display mode, audio session); the glob only takes *.cpp.
+    file(GLOB MKW_TVOS_OBJC_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/src/platform/tvos/*.mm")
+    list(APPEND SOURCES ${MKW_TVOS_OBJC_SOURCES})
+    set_source_files_properties(${MKW_TVOS_OBJC_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-fobjc-arc" SKIP_UNITY_BUILD_INCLUSION ON SKIP_PRECOMPILE_HEADERS ON)
 else()
     list(FILTER SOURCES EXCLUDE REGEX "/src/platform/tvos/")
 endif()
