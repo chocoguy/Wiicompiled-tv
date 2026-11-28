@@ -4,7 +4,7 @@ WiiCompiled Installer is the signed Mac app players download. It builds the Appl
 
 | Piece | Where |
 |---|---|
-| The installer app | `apps/installer/` (SwiftUI and Sparkle 2.10.1; presets in `apps/installer/CMakePresets.json`) |
+| The installer app | `apps/installer/` (SwiftUI; presets in `apps/installer/CMakePresets.json`) |
 | Its logic tests | `tests/installertest/` |
 | The build engine | `tools/tvos/port` (Python standard library; `port.json` names it) |
 | Version stamping | `port.json`, `Launcher/tvos/package_app.py --version --commit` |
@@ -23,6 +23,7 @@ WiiCompiled Installer is the signed Mac app players download. It builds the Appl
 | R5 | The installer: Setup (Xcode, tvOS, Python, five pinned tool downloads, Apple ID), Game, Updates, Activity | Done; built ad hoc, logic tests pass; **window never opened** |
 | R6 | `tools/release.sh` and `docs/release.md` with Frontline's signing setup | Done; `--dry-run` only |
 | R7 | README: Install, Controls, For Developers | Done |
+| R8 | Major version = installer: no Sparkle; `N.0.0` builds the installer, `N.x.y` re-attaches it; new-installer alert and banner; Setup → Storage; accent #FF9955 | Done; built ad hoc, logic tests and `--dry-run` pass; **window never opened** |
 
 Nothing has been signed with the Developer ID, notarized, installed on an Apple TV or published by an agent.
 
@@ -38,14 +39,14 @@ Nothing has been signed with the Developer ID, notarized, installed on an Apple 
 
 You do these; agents don't sign, install or publish.
 
-1. **One-time setup check** (docs/release.md): the Developer ID for `USLHQ524FW`, the `frontline-notary` profile, the Sparkle private key in the keychain (`generate_keys -p` prints `zXdaNL5/…`), and `gh auth status`.
+1. **One-time setup check** (docs/release.md): the Developer ID for `USLHQ524FW`, the `frontline-notary` profile, and `gh auth status`.
 2. **Push `main`.** The release script requires `main` to equal `origin/main`:
    ```sh
    git push origin main
    ```
 3. **A release candidate:**
    ```sh
-   tools/release.sh 1.0.0-rc1 --prerelease
+   tools/release.sh 2.0.0-rc1 --prerelease
    ```
    On a second macOS user account, download the zip from the release, open the installer, and check there is no Gatekeeper warning. Turn on pre-releases there:
    ```sh
@@ -56,10 +57,10 @@ You do these; agents don't sign, install or publish.
    - a race with a controller
    - that the View/Back button opens the settings
    - that the Game screen shows the version and an expiry date
-5. **A game update:** release `1.0.1-rc1 --prerelease`. With a second Apple TV off (or unplugged), press Update All. Check it's marked pending, then switch it on and press Finish the Update.
-6. **An installer update:** this needs a full, non-prerelease release, since Sparkle's `latest/download` skips pre-releases. Release `1.0.0` (step 8) first, then later `1.0.1 --min-app 1.0.1`. Check that the 1.0.0 installer offers the update (Check for Updates…) and refuses to build 1.0.1 before it's updated.
+5. **A game update:** release `2.0.1-rc1 --prerelease`. With a second Apple TV off (or unplugged), press Update All. Check it's marked pending, then switch it on and press Finish the Update.
+6. **A new installer:** with pre-releases on, release `3.0.0-rc1 --prerelease`. Check the 2.x installer shows "A new WiiCompiled Installer is available" once per launch, the banner on Game and Updates, that Update All and Install Another Version… are off, and that Reinstall still works.
 7. **Rollback:** Updates → Install Another Version… → the earlier tag.
 8. **Publish:**
    ```sh
-   tools/release.sh 1.0.0
+   tools/release.sh 2.0.0
    ```

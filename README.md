@@ -29,21 +29,22 @@ anywhere at runtime.
 
 Use **WiiCompiled Installer**. It's a Mac app that takes your own Mario Kart Wii disc image, builds the game from it, and installs it on your Apple TV. It also keeps the game up to date.
 
-1. **Download WiiCompiled Installer** from the [latest release](https://github.com/chocoguy/Wiicompiled-tv/releases/latest), unzip it, and drag it to Applications. It's signed and notarized.
-2. **Install Xcode 27** from the App Store and open it once. Xcode builds the game; you won't need to use it yourself.
-3. **Open WiiCompiled Installer and follow Setup.** It checks what this Mac needs and fixes what it can:
+1. **Download WiiCompiled Installer** from the [latest release](https://github.com/chocoguy/Wiicompiled-tv/releases/latest), unzip it, and drag it to ***Applications folder.*** It's signed and notarized.
+2. Have you dragged it to the ***Applications Folder?***
+3. **Install Xcode 27** from the App Store and open it once. Xcode builds the game; you won't need to use it yourself.
+4. **Open WiiCompiled Installer and follow Setup.** It checks what this Mac needs and fixes what it can:
    - it downloads the build tools (CMake, Ninja, nodtool, XcodeGen and the .NET SDK) into its own folder;
    - it installs Xcode's tvOS support if it's missing.
-4. **Choose your disc:** a disc image of your own copy of Mario Kart Wii, PAL (`RMCP01`), NTSC-U (`RMCE01`) or NTSC-J (`RMCJ01`), as ISO, WBFS, CISO, RVZ, WIA or GCZ. You can drop it on the window.
-5. **On Game, choose Install on an Apple TV…** and pick yours. It has to be paired with Xcode (on the Apple TV: Settings → Remotes and Devices → Remote App and Devices; then Xcode → Window → Devices and Simulators), switched on and awake.
+5. **Choose your disc:** a disc image of your own copy of Mario Kart Wii, PAL (`RMCP01`), NTSC-U (`RMCE01`) or NTSC-J (`RMCJ01`), as ISO, WBFS, CISO, RVZ, WIA or GCZ. You can drop it on the window.
+6. **On Game, choose Install on an Apple TV…** and pick yours. It has to be paired with Xcode (on the Apple TV: Settings → Remotes and Devices → Remote App and Devices; then Xcode → Window → Devices and Simulators), switched on and awake.
 
 The first build downloads the source and takes about half an hour; later ones are quicker. **Activity** shows what it's doing. The installer never opens the game for you: find WiiCompiled on the Apple TV's Home screen.
 
-**Updates:** when a new version is released, **Updates** shows it with its notes. **Update All** rebuilds it once and reinstalls it on every Apple TV you installed it on. An Apple TV that's off is finished later with **Finish the Update**. The installer updates itself too (WiiCompiled Installer → Check for Updates…).
+**Updates:** when a new version is released, **Updates** shows it with its notes. **Update All** builds it once and installs it on every Apple TV you installed it on. An Apple TV that's off is finished later with **Finish the Update**. When a release needs a new installer, it says so and links to it: download it from the [latest release](https://github.com/chocoguy/Wiicompiled-tv/releases/latest) and replace the old one. Until then, game updates wait, but **Reinstall** still works (a free Apple ID's install has to be renewed every 7 days).
 
 **Before an install expires:** the game stops opening when its signing profile expires: after 7 days with a free Apple ID, or a year with a paid Apple Developer membership. The Game screen shows when each Apple TV's copy stops working; press **Reinstall** before then. Your saves are kept.
 
-Everything the installer downloads and builds stays in `~/Library/Application Support/WiiCompiled Installer`. It runs `tools/tvos/port`, which also works from the Terminal (see [For Developers](#for-developers)).
+Everything the installer downloads and builds stays in one folder, `~/Library/Application Support/WiiCompiled Installer`, never inside the app, so replacing the app with a new download changes nothing. **Setup → Storage** shows its size, opens it in Finder, frees up space (removes the compiled game, which the next install compiles again) or removes everything (the game stays on your Apple TVs). It runs `tools/tvos/port`, which also works from the Terminal (see [For Developers](#for-developers)).
 
 Saves and settings stay on the Apple TV, in the app's caches, with a copy in its settings that brings them back if tvOS clears the caches. Deleting the app deletes them.
 
@@ -136,7 +137,7 @@ cd apps/installer && cmake --preset installer-ninja && cmake --build --preset in
 
 The tvOS runtime tests run on a paired Apple TV: configure the tvOS build with `-DMKW_TVOS_TEST_DEVICE=<device> -DMKW_TVOS_TEST_TEAM=<team>`, then `ctest --test-dir build-tvos` (without `-j`).
 
-**The installer** is in `apps/installer` (SwiftUI and Sparkle). Build it with `cd apps/installer && cmake --preset installer-xcode && cmake --build --preset installer`; a local build is signed ad hoc and never offers to update itself. Releases are made with `tools/release.sh`: see [docs/release.md](docs/release.md).
+**The installer** is in `apps/installer` (SwiftUI). Build it with `cd apps/installer && cmake --preset installer-xcode && cmake --build --preset installer`; a local build is signed ad hoc. Releases are made with `tools/release.sh`: see [docs/release.md](docs/release.md).
 
 **More:** [docs/tvos-porting-plan.md](docs/tvos-porting-plan.md) covers how the port works and what's left; [docs/building-macos.md](docs/building-macos.md) covers upstream's native macOS build.
 

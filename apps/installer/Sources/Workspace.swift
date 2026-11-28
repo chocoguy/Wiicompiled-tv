@@ -1,6 +1,8 @@
 import Foundation
 
-/// Where the installer keeps everything: ~/Library/Application Support/WiiCompiled Installer.
+/// Where the installer keeps everything, in one folder: ~/Library/Application Support/WiiCompiled
+/// Installer. Not inside the app: writing there breaks its signature, a quarantined copy runs read-only,
+/// and replacing the app (a new download) would lose it all.
 struct Workspace: Sendable {
     let root: URL
 
@@ -20,6 +22,25 @@ struct Workspace: Sendable {
     var stateFile: URL { root.appendingPathComponent("state.json") }
     var releasesCache: URL { root.appendingPathComponent("cache/releases.json") }
     var port: URL { source.appendingPathComponent("tools/tvos/port") }
+    /// What Free Up Space removes: tools/tvos/port's compiled game (build-tvos) and the signed app made
+    /// from it (package), which the next install makes again. The source, the extracted and translated
+    /// disc (the slow part) and the tools stay.
+    var rebuildable: [URL] {
+        [work.appendingPathComponent("build-tvos", isDirectory: true), work.appendingPathComponent("package", isDirectory: true)]
+    }
+
+    /// Bytes on disk, everything in the folder.
+    func size() -> Int64 {
+        guard let files = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+                                                         options: [], errorHandler: { _, _ in true }) else {
+            return 0
+        }
+        var total: Int64 = 0
+        for case let file as URL in files {
+            total += Int64((try? file.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
 
     func load() -> InstallerState {
         guard let data = try? Data(contentsOf: stateFile),

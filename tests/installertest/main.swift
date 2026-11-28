@@ -45,6 +45,28 @@ do {
     check(false, "releases parse: \(error)")
 }
 
+// Major versions: an installer builds its own major; a later one means a new installer.
+let majors = """
+[
+  {"tag_name": "v2.0.0", "name": "", "body": "", "prerelease": false, "draft": false},
+  {"tag_name": "v3.0.0-rc1", "name": "", "body": "", "prerelease": true, "draft": false},
+  {"tag_name": "v1.0.3", "name": "", "body": "", "prerelease": false, "draft": false},
+  {"tag_name": "v1.1.0", "name": "", "body": "", "prerelease": false, "draft": false},
+  {"tag_name": "v0.9.0", "name": "", "body": "", "prerelease": false, "draft": false}
+]
+"""
+do {
+    let all = try Releases.parse(Data(majors.utf8))
+    check(Releases.compatible(all, prereleases: false, installerMajor: 1).map(\.tag) == ["v1.1.0", "v1.0.3"], "1.x builds 1.x")
+    check(Releases.needingNewerInstaller(all, prereleases: false, installerMajor: 1)?.tag == "v2.0.0", "2.0.0 needs a new installer")
+    check(Releases.needingNewerInstaller(all, prereleases: false, installerMajor: 2) == nil, "2.x is current")
+    check(Releases.needingNewerInstaller(all, prereleases: true, installerMajor: 2)?.tag == "v3.0.0-rc1", "a candidate, when asked")
+    check(Releases.compatible(all, prereleases: false, installerMajor: 2).map(\.tag) == ["v2.0.0"], "2.x skips 1.x")
+    check(Releases.compatible(all, prereleases: false, installerMajor: 0).map(\.tag) == ["v0.9.0"], "upstream's 0.x only for 0.x")
+} catch {
+    check(false, "majors parse: \(error)")
+}
+
 // Releases come from the fork.
 check(Releases.repository == "chocoguy/Wiicompiled-tv", "repository")
 
@@ -67,6 +89,14 @@ check(loaded.installs.first { $0.deviceId == "DEF" }?.version == "0.2.0", "repla
 check(loaded.installs.first { $0.deviceId == "ABC" }?.pending == true, "pending kept")
 check(loaded.installs.first { $0.deviceId == "ABC" }?.expires == Date(timeIntervalSince1970: 1_900_000_000), "date kept")
 check(loaded.tag == "v0.2.0" && loaded.disc == "/Discs/MarioKart.iso" && loaded.team == "TEAM123456", "fields kept")
+// Storage: the whole folder counts, and Free Up Space takes only the compiled game and its package.
+let build = workspace.work.appendingPathComponent("build-tvos/WiiCompiled.app", isDirectory: true)
+try? FileManager.default.createDirectory(at: build, withIntermediateDirectories: true)
+try? Data(count: 100_000).write(to: build.appendingPathComponent("big"))
+check(workspace.size() >= 100_000, "size counts the build")
+check(workspace.rebuildable == [workspace.work.appendingPathComponent("build-tvos", isDirectory: true),
+                                workspace.work.appendingPathComponent("package", isDirectory: true)], "only the build is freed")
+check(!workspace.rebuildable.contains { workspace.source.path.hasPrefix($0.path) }, "the prepared disc stays")
 try? FileManager.default.removeItem(at: folder)
 
 // The build script's events.
